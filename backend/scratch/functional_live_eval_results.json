@@ -1,0 +1,113 @@
+{
+  "prompts": [
+    {
+      "id": "1_artifact_type_only",
+      "description": "Artifact type only",
+      "prompt": "generate a report",
+      "category": "GENERAL",
+      "deliverable_type": "report",
+      "intended_outcome": null,
+      "is_functionally_complete": false,
+      "ambiguity_score": 75,
+      "needs_clarification": true,
+      "grounded": true,
+      "clarification_question": "What should the report help accomplish?",
+      "quality_score": null,
+      "enhanced_prompt": ""
+    },
+    {
+      "id": "2_artifact_platform_no_purpose",
+      "description": "Artifact + platform but no functional purpose",
+      "prompt": "build an iOS mobile app with Swift",
+      "category": "CODING",
+      "deliverable_type": "app",
+      "intended_outcome": null,
+      "is_functionally_complete": false,
+      "ambiguity_score": 75,
+      "needs_clarification": true,
+      "grounded": true,
+      "clarification_question": "What should the requested app help accomplish or what is its primary purpose?",
+      "quality_score": null,
+      "enhanced_prompt": ""
+    },
+    {
+      "id": "3_artifact_plus_purpose",
+      "description": "Artifact + functional purpose",
+      "prompt": "create a presentation explaining photosynthesis to middle school students",
+      "category": "EDUCATION",
+      "deliverable_type": "presentation",
+      "intended_outcome": "to middle school students",
+      "is_functionally_complete": true,
+      "ambiguity_score": 0,
+      "needs_clarification": false,
+      "grounded": true,
+      "clarification_question": null,
+      "quality_score": 98,
+      "enhanced_prompt": "Act as an educational communicator. Create a presentation explaining photosynthesis to middle school students.\n\nCore Requirements:\n\n* Create a presentation\n* Explain photosynthesis\n* Target middle school students\n\n* No specific platform or medium required\n* No specific tone or explanation style required\n\nOUTPUT EXPECTATIONS / OUTPUT FORMAT: A clear and intuitive explanation of photosynthesis suitable for middle school students.",
+      "validation_is_valid": true,
+      "dimensions": {
+        "clarity": 95,
+        "specificity": 100,
+        "output_definition": 95,
+        "intent_preservation": 100,
+        "requirement_coverage": 100
+      }
+    },
+    {
+      "id": "4_short_complete_operation",
+      "description": "Very short complete operation",
+      "prompt": "compute the factorial of 10",
+      "category": "EDUCATION",
+      "deliverable_type": null,
+      "intended_outcome": "compute the factorial of 10",
+      "is_functionally_complete": true,
+      "ambiguity_score": 0,
+      "needs_clarification": false,
+      "grounded": true,
+      "clarification_question": null,
+      "quality_score": 95,
+      "enhanced_prompt": "Act as an effective teacher and educational communicator. Compute the factorial of 10, providing a clear and simple explanation.\n\nThe user has not specified:\n- what is the factorial\n- should we calculate it\n\nDo not assume these details without confirmation. Ask for clarification if needed.",
+      "validation_is_valid": true,
+      "dimensions": {
+        "clarity": 85,
+        "specificity": 90,
+        "output_definition": 95,
+        "intent_preservation": 100,
+        "requirement_coverage": 100
+      }
+    },
+    {
+      "id": "5_detailed_complete_compound",
+      "description": "Detailed complete compound request",
+      "prompt": "Write a technical post comparing Docker vs Podman, include 3 security advantages of daemonless containers, and format as Markdown",
+      "category": "DATA_ANALYSIS",
+      "deliverable_type": null,
+      "intended_outcome": "Comparing Docker vs Podman and highlighting security advantages of daemonless containers",
+      "is_functionally_complete": true,
+      "ambiguity_score": 15,
+      "needs_clarification": false,
+      "grounded": true,
+      "clarification_question": null,
+      "quality_score": 97,
+      "enhanced_prompt": "Act as an expert technical writer. \n**Comparing Docker vs Podman**\n\n* Write a technical post comparing Docker vs Podman\n* Include 3 security advantages of daemonless containers\n* Format as Markdown",
+      "validation_is_valid": true,
+      "dimensions": {
+        "clarity": 95,
+        "specificity": 95,
+        "output_definition": 90,
+        "intent_preservation": 100,
+        "requirement_coverage": 100
+      }
+    }
+  ],
+  "stability": {
+    "prompt": "compute the factorial of 10",
+    "runs": [
+      93,
+      96
+    ],
+    "variance": 3,
+    "avg_specificity": 87.5,
+    "avg_output_definition": 87.5
+  }
+}

@@ -1,0 +1,1383 @@
+import json
+import logging
+import re
+from typing import Any, Dict, List, Optional, Tuple, Union
+from pydantic import ValidationError
+from app.llm.ollama_client import OllamaResponseError, ollama_client
+from app.prompts.analyzer import ANALYZER_SYSTEM_PROMPT
+from app.schemas.analysis import (
+    AmbiguityAssessment,
+    AmbiguityLevel,
+    AnalysisGrounding,
+    ClarificationAnswer,
+    ClarificationQuestion,
+    DeliverableSemantics,
+    GroundingEvidence,
+    GroundingRelation,
+    PromptAnalysis,
+    PromptCategory,
+    PromptClassification,
+    SourceType,
+)
+
+logger = logging.getLogger("humanintent.analyzer")
+
+# Context-sensitive mapping of communication and presentation style modifiers
+STYLE_MODIFIER_MAPPINGS = [
+    (r"\b(?:professional\s+tone|written\s+professionally|write\s+professionally|in\s+a\s+professional\s+tone|in\s+a\s+professional\s+manner|sound\s+professional|professional\s+(?:email|letter|message|memo|communication|draft))\b", "professional tone", "professional"),
+    (r"\b(?:formal\s+tone|formal\s+style|written\s+formally|write\s+formally|in\s+a\s+formal\s+tone|in\s+a\s+formal\s+manner|formal\s+(?:email|letter|memo|document))\b", "formal tone", "formal"),
+    (r"\b(?:casual\s+tone|casual\s+style|written\s+casually|write\s+casually|in\s+a\s+casual\s+tone|sound\s+casual|casual\s+(?:email|message|chat))\b", "casual tone", "casual"),
+    (r"\b(?:friendly\s+tone|friendly\s+style|sound\s+friendly|in\s+a\s+friendly\s+tone|friendly\s+(?:email|message|note))\b", "friendly tone", "friendly"),
+    (r"\b(?:explain\s+(?:[^\.\n]*?\s+)?simply|simply\s+explain|simple\s+explanation|in\s+simple\s+terms|in\s+simple\s+words|break\s+(?:it\s+)?down\s+simply)\b", "simple explanation", "simple"),
+    (r"\b(?:concise|brief|make\s+it\s+brief|keep\s+it\s+brief|keep\s+it\s+short|keep\s+it\s+concise)\b", "concise style", "concise"),
+    (r"\b(?:detailed\s+explanation|explain\s+(?:in\s+)?detail|in-depth\s+explanation|detailed\s+breakdown)\b", "detailed explanation", "detailed"),
+    (r"\b(?:make\s+it\s+sound\s+cool|sound\s+cool|cool\s+tone)\b", "cool and engaging style", "cool"),
+]
+
+GENERIC_FILLER_WORDS = {
+    "system", "systems", "requirement", "requirements", "app", "application",
+    "tracking", "tool", "tools", "features", "feature", "details", "detail",
+    "specification", "specifications", "method", "methods", "software", "project",
+    "environment", "process", "setup", "data", "email", "letter", "message",
+    "memo", "thing", "something", "stuff", "it", "plan", "plans",
+    "dashboard", "dashboards", "page", "pages", "script", "scripts",
+    "actually", "scratch", "rather", "instead", "wait", "maybe",
+}
+
+STOP_WORDS = {
+    "make", "build", "create", "write", "explain", "simple", "simply",
+    "using", "with", "into", "from", "that", "this", "your", "about",
+    "for", "the", "and", "a", "an", "in", "to", "of", "on", "at", "by",
+    "app", "application", "analyze", "help", "me", "do", "my",
+    "use", "actually", "rather", "instead", "scratch", "wait", "maybe", "like", "just",
+}
+
+# Candidate technologies that must not be suggested in missing_context unless requested
+FORBIDDEN_TECH_EXAMPLES = {
+    "react", "angular", "vue", "next.js", "nextjs", "tailwind",
+    "firebase", "aws", "sqlite", "postgres", "postgresql", "mongodb",
+}
+
+
+class PromptAnalyzer:
+    """Service responsible for extracting structured intent and requirements from a raw prompt."""
+
+    def __init__(self, client=None) -> None:
+        self.client = client or ollama_client
+
+    def _build_schema_contract(self) -> Dict[str, Any]:
+        """Generate schema contract from PromptAnalysis ensuring all core fields are required."""
+        schema = PromptAnalysis.model_json_schema()
+        schema["required"] = [
+            "classification",
+            "objective",
+            "explicit_requirements",
+            "constraints",
+            "preferences",
+            "missing_context",
+            "ambiguity",
+        ]
+        return schema
+
+    def _clean_json_content(self, raw_content: str) -> str:
+        """Strip markdown fences or extraneous text around JSON if present."""
+        trimmed = raw_content.strip()
+        # Remove markdown code block fences if the model included them
+        if trimmed.startswith("```"):
+            trimmed = re.sub(r"^```(?:json)?\s*", "", trimmed, flags=re.IGNORECASE)
+            trimmed = re.sub(r"\s*```$", "", trimmed)
+        return trimmed.strip()
+
+    def _is_superseded_or_rejected(self, term: str, prompt_lower: str) -> bool:
+        """Detect if a user initially mentioned a term but then superseded, rejected, or revised it."""
+        t_esc = re.escape(term.lower().strip())
+        patterns = [
+            rf"\b{t_esc}\b\s*[\?\!\,\.\;\—\-]*\s*(?:wait\s+no|actually\s+no|actually\s+use|actually|no|not|instead|rather|scratch\s+that|change\s+that\s+to|i\s+mean)\b",
+            rf"\b(?:no|not|instead\s+of|rather\s+than)\s+{t_esc}\b",
+            rf"\b(?:start\s+with\s+|maybe\s+(?:like\s+a\s+|a\s+)?)?{t_esc}\b[^\.\n]*?(?:scratch\s+that|wait\s+no|actually\b|change\s+that\s+to|rather\b|no\s+like)",
+        ]
+        return any(re.search(p, prompt_lower) for p in patterns)
+
+    def _recover_style_preferences(self, raw_prompt: str, preferences: list[str]) -> list[str]:
+        """Recover explicit presentation, tone, or style preferences present in user wording, excluding superseded or misassigned ones."""
+        prompt_lower = raw_prompt.lower()
+        recovered: list[str] = []
+        for p in preferences:
+            p_lower = p.lower()
+
+            # Semantic Role Verification: Filter preferences where a modifier was misassigned to output style
+            if any(term in p_lower for term in ["simple explanation", "explain simply", "simple language"]):
+                # If "simple" modifies an artifact deliverable and not an explanation request
+                if re.search(r"\bsimple\s+(?:web\s+app|app|application|tool|script|dashboard|page|calculator|system|database|api|program|bot|workflow|model|service)\b", prompt_lower):
+                    if not re.search(r"\b(?:explain|explanation|terms|words|concept|breakdown)\b", prompt_lower):
+                        continue
+            if "professional tone" in p_lower or "sound professional" in p_lower:
+                if re.search(r"\bprofessional\s+(?:portfolio|network|networking|headshot|photo|camera|equipment|software|tool|app|website)\b", prompt_lower):
+                    if not re.search(r"\b(?:tone|manner|email|letter|message|memo|writing|write|draft)\b", prompt_lower):
+                        continue
+            if "formal tone" in p_lower:
+                if re.search(r"\bformal\s+(?:verification|logic|methods?|proof|grammar|system|semantics)\b", prompt_lower):
+                    if not re.search(r"\b(?:tone|manner|email|letter|message|writing|write)\b", prompt_lower):
+                        continue
+            if any(t in p_lower for t in ["light theme", "light mode"]):
+                if re.search(r"\blight(?:weight)?\s+(?:database|db|container|library|dependency|footprint|service)\b", prompt_lower):
+                    if not re.search(r"\b(?:theme|mode|ui|visual|color|style)\b", prompt_lower):
+                        continue
+            if any(t in p_lower for t in ["fast response", "fast style"]):
+                if re.search(r"\bfast\s+(?:algorithm|query|search|function|script|execution|runtime)\b", prompt_lower):
+                    continue
+
+            # If the preference mentions "friendly", ensure "friendly" actually occurs in prompt
+            if "friendly" in p_lower and not re.search(r"\bfriendly\b", prompt_lower):
+                continue
+            # If the preference mentions "formal", ensure "formal" occurs in prompt
+            if "formal" in p_lower and not re.search(r"\bformal\b", prompt_lower):
+                continue
+            # If the preference mentions "casual", ensure "casual" occurs in prompt
+            if "casual" in p_lower and not re.search(r"\bcasual\b", prompt_lower):
+                continue
+            # If the preference mentions "professional", ensure "professional" occurs in prompt
+            if "professional" in p_lower and not re.search(r"\bprofessional\b", prompt_lower):
+                continue
+            if any(kw in p_lower and self._is_superseded_or_rejected(kw, prompt_lower) for _, _, kw in STYLE_MODIFIER_MAPPINGS):
+                continue
+            recovered.append(p)
+
+        for pattern, canonical_pref, keyword in STYLE_MODIFIER_MAPPINGS:
+            if re.search(pattern, prompt_lower) and not self._is_superseded_or_rejected(keyword, prompt_lower):
+                if not any(keyword in p.lower() for p in recovered):
+                    recovered.append(canonical_pref)
+        return recovered
+
+    def _clean_missing_context(
+        self,
+        missing_context: list[str],
+        objective: str,
+        explicit_requirements: list[str],
+        preferences: list[str],
+        raw_prompt: str,
+        category: Optional[str] = None,
+    ) -> list[str]:
+        """Filter out missing-context items that duplicate preferences, explicit requirements, or restate the objective."""
+        cleaned: list[str] = []
+
+        has_tone_pref = any(
+            any(k in p.lower() for k in ["tone", "professional", "formal", "casual", "friendly", "cool"])
+            for p in preferences
+        )
+
+        has_web_interface = bool(
+            re.search(r"\b(?:website|webpage|web\s+page|site|page\s+on\s+my\s+website)\b", raw_prompt.lower())
+        )
+
+        explicit_lower = {r.strip().lower() for r in explicit_requirements}
+
+        # Extract core domain terms from the prompt and objective
+        prompt_words = {w for w in re.findall(r"\b[a-zA-Z]{4,}\b", raw_prompt.lower()) if w not in STOP_WORDS}
+        obj_words = {w for w in re.findall(r"\b[a-zA-Z]{4,}\b", objective.lower()) if w not in STOP_WORDS}
+        core_domain_words = prompt_words & obj_words
+
+        has_explicit_framework = any(
+            req in {"react", "angular", "vue", "next.js", "nextjs", "svelte", "django", "flask", "fastapi", "express", "node", "nodejs"}
+            for req in explicit_lower
+        )
+        has_explicit_language = any(
+            req in {"python", "javascript", "typescript", "go", "rust", "java", "c#", "c++", "ruby", "html", "css"}
+            for req in explicit_lower
+        )
+
+        for item in missing_context:
+            item_str = item.strip()
+            if not item_str:
+                continue
+
+            # Strip candidate-answer parentheses: (e.g., ...), (for example, ...), (such as ...), (i.e. ...)
+            item_str = re.sub(r"\s*\((?:e\.g\.|for example|such as|i\.e\.)[^)]*\)", "", item_str, flags=re.IGNORECASE).strip()
+            # Strip parenthetical option lists: (CLI, web, GUI), (showcase, resume, contact), etc.
+            item_str = re.sub(r"\s*\([^)]*(?:,|\/|\bor\b)[^)]*\)", "", item_str, flags=re.IGNORECASE).strip()
+            item_str = re.sub(r"\s*(?:such as|for example|e\.g\.)\s+[^,;]+", "", item_str, flags=re.IGNORECASE).strip()
+
+            item_lower = item_str.lower()
+            if not item_lower:
+                continue
+
+            # If prompt specifies a website/webpage/site, interface medium is already known as web
+            if has_web_interface and any(
+                term in item_lower for term in [
+                    "interface type", "application interface type", "quiz interface type",
+                    "interface medium", "web interface", "user interface type", "ui type",
+                    "platform (web/mobile)", "web or mobile"
+                ]
+            ):
+                continue
+
+            # Candidate answers/features must NOT be accepted as missing context dimensions
+            candidate_features = [
+                "project showcase", "resume", "contact page", "contact form",
+                "personal branding", "digital footprint", "about me", "testimonials",
+                "skills section", "sections", "features",
+            ]
+            if any(re.search(rf"\b{re.escape(feat)}\b", item_lower) for feat in candidate_features):
+                if not any("content" in c.lower() for c in cleaned):
+                    cleaned.append("content requirements")
+                continue
+
+            # Candidate visual styles must NOT be accepted as missing context dimensions
+            if any(re.search(rf"\b{re.escape(st)}\b", item_lower) for st in ["dark theme", "light theme", "minimal design", "color palette", "theme"]):
+                if not any("visual style" in c.lower() for c in cleaned):
+                    cleaned.append("visual style")
+                continue
+
+            # If item contains unrequested candidate technologies, neutralize to dimension
+            has_forbidden_tech = any(tech in item_lower for tech in FORBIDDEN_TECH_EXAMPLES if tech not in explicit_lower)
+            if has_forbidden_tech:
+                if any(w in item_lower for w in ["platform", "framework", "library", "frontend", "front-end", "backend"]):
+                    item_str = "development platform or framework"
+                    item_lower = item_str.lower()
+                elif any(w in item_lower for w in ["database", "storage", "persistence"]):
+                    item_str = "data storage method"
+                    item_lower = item_str.lower()
+                elif any(w in item_lower for w in ["hosting", "cloud", "deployment"]):
+                    item_str = "hosting and deployment environment"
+                    item_lower = item_str.lower()
+                else:
+                    for tech in FORBIDDEN_TECH_EXAMPLES:
+                        if tech not in explicit_lower:
+                            item_str = re.sub(rf"\b{re.escape(tech)}\b", "", item_str, flags=re.IGNORECASE).strip()
+                    item_str = re.sub(r"\s+", " ", item_str).strip()
+                    item_lower = item_str.lower()
+                    if not item_lower:
+                        continue
+
+            # Normalize common platform/feature phrases to neutral canonical forms
+            if item_lower in {"desired platform", "platform"}:
+                item_str = "development platform or framework"
+                item_lower = item_str.lower()
+            elif re.search(r"\b(?:features?|sections?|components?)\b", item_lower) and any(w in item_lower for w in ["content", "page", "site", "app", "application", "system"]):
+                item_str = "content requirements"
+                item_lower = item_str.lower()
+
+            # Neutralize unrequested candidate product attributes (demographics, brands, sizes, prices) to dimensions
+            if any(re.search(rf"\b{w}\b", item_lower) for w in ["demographic", "demographics", "age", "gender", "location", "brand", "brands", "size", "sizes", "price", "prices", "pricing"]):
+                if not any(re.search(rf"\b{w}\b", " ".join(explicit_lower)) for w in ["price", "pricing", "brand", "size", "demographic", "age", "gender", "location"]):
+                    if any(term in prompt_words for term in ["recommend", "recommendation", "recommends", "quiz", "selector", "suggest", "product", "catalog", "item"]):
+                        item_str = "recommendation data source"
+                        item_lower = item_str.lower()
+                    else:
+                        continue
+
+            # 1. Tone / style consistency: if tone is in preferences, remove tone from missing context
+            if has_tone_pref and ("tone" in item_lower or any(p in item_lower for p in ["professional", "formal", "friendly", "cool"])):
+                continue
+
+            # 2. Check if item asks for platform/framework when already explicitly supplied
+            if has_explicit_framework and any(term in item_lower for term in ["platform", "framework"]):
+                continue
+
+            # 3. Check if item asks for language when already explicitly supplied
+            if has_explicit_language and any(term in item_lower for term in ["programming language", "language choice", "development language"]):
+                continue
+
+            # 4. Check if item repeats an explicit requirement
+            if any(req in item_lower and (item_lower == req or any(g in item_lower for g in GENERIC_FILLER_WORDS)) for req in explicit_lower):
+                continue
+
+            # 5. Check if item is an objective restatement:
+            item_tokens = set(re.findall(r"\b[a-zA-Z]{3,}\b", item_lower))
+            domain_matches = item_tokens & core_domain_words
+
+            # If it contains multiple core domain words (e.g. both 'college' and 'attendance')
+            # and remaining tokens are generic filler words:
+            if len(domain_matches) >= 2:
+                remaining = item_tokens - domain_matches
+                if not remaining or remaining.issubset(GENERIC_FILLER_WORDS):
+                    continue
+
+            # If it contains 1 core domain word and ALL other words are generic filler words
+            # (e.g. 'attendance application', 'attendance tracking', 'college environment'):
+            if len(domain_matches) >= 1:
+                remaining = item_tokens - domain_matches
+                if not remaining or remaining.issubset(GENERIC_FILLER_WORDS):
+                    continue
+
+            if item_str.lower() not in [c.lower() for c in cleaned]:
+                cleaned.append(item_str)
+
+        return cleaned
+
+    def _apply_classification_consistency(
+        self, raw_prompt: str, classification: PromptClassification
+    ) -> PromptClassification:
+        """Apply principled classification consistency based strictly on the user's primary deliverable."""
+        prompt_lower = raw_prompt.lower()
+
+        # 1. EDUCATION / PLANNING Deliverable Priority:
+        is_curriculum = bool(
+            re.search(r"\b(?:curriculum|lesson\s+plan|study\s+plan|syllabus|course\s+plan|teaching\s+sequence)\b", prompt_lower)
+            or (re.search(r"\b(?:teach|course)\b", prompt_lower) and re.search(r"\b(?:beginner|student|curriculum|module|week)\b", prompt_lower))
+        )
+        if is_curriculum:
+            if classification.category not in {PromptCategory.EDUCATION, PromptCategory.PLANNING}:
+                logger.info(
+                    "Classification consistency: reclassified from %s to EDUCATION based on curriculum deliverable.",
+                    classification.category.value,
+                )
+                return PromptClassification(category=PromptCategory.EDUCATION, confidence=0.95)
+            return classification
+
+        if re.search(r"\b(?:roadmap|study\s+schedule|schedule\s+to\s+learn|5-day\s+study\s+schedule|plan\s+a\s+\d+[\s-]day)\b", prompt_lower) and not re.search(r"\b(?:build|code|implement|create\s+an?\s+app)\b", prompt_lower):
+            if classification.category not in {PromptCategory.PLANNING, PromptCategory.EDUCATION}:
+                logger.info(
+                    "Classification consistency: reclassified from %s to PLANNING based on roadmap deliverable.",
+                    classification.category.value,
+                )
+                return PromptClassification(category=PromptCategory.PLANNING, confidence=0.95)
+            return classification
+
+        # 2. RESEARCH Deliverable Priority:
+        is_research = bool(
+            re.search(r"\b(?:research|investigate|compare\s+(?:the\s+)?(?:main\s+)?(?:approaches|methods|techniques)|literature\s+review)\b", prompt_lower)
+            and not re.search(r"\b(?:build|code|implement|fix|debug)\b", prompt_lower)
+        )
+        if is_research and classification.category in {PromptCategory.GENERAL, PromptCategory.CODING}:
+            logger.info("Classification consistency: reclassified from %s to RESEARCH based on research deliverable.", classification.category.value)
+            return PromptClassification(category=PromptCategory.RESEARCH, confidence=0.95)
+
+        # 3. WRITING Deliverable Priority:
+        is_writing = bool(
+            re.search(r"\b(?:write|draft|rewrite|compose)\s+(?:a\s+|an\s+|the\s+|\d+\s+)?(?:email|newsletter|subject\s+lines?|blog|post|article|essay|letter|memo|speech)\b", prompt_lower)
+            and not re.search(r"\b(?:build|code|implement|create\s+(?:an?\s+)?(?:app|page|website|tool|script))\b", prompt_lower)
+        )
+        if is_writing and classification.category in {PromptCategory.GENERAL, PromptCategory.CREATIVE}:
+            logger.info("Classification consistency: reclassified from %s to WRITING based on text writing deliverable.", classification.category.value)
+            return PromptClassification(category=PromptCategory.WRITING, confidence=0.95)
+
+        # 4. CREATIVE vs CODING (Brainstorming / Ideation vs Building Software):
+        is_brainstorm = bool(
+            re.search(r"\b(?:brainstorm|creative\s+ideas?|concept\s+ideas?|suggest\s+ideas?)\b", prompt_lower)
+            and not re.search(r"\b(?:build|code|implement|develop|deploy)\b", prompt_lower)
+        )
+        if is_brainstorm and classification.category == PromptCategory.CODING:
+            logger.info(
+                "Classification consistency: reclassified from CODING to CREATIVE based on ideation deliverable.",
+            )
+            return PromptClassification(category=PromptCategory.CREATIVE, confidence=0.95)
+
+        # 5. CODING Deliverable Priority:
+        is_software_build = bool(
+            re.search(r"\b(?:website|web\s+page|page|app|application|dashboard|api|backend|frontend|script|software)\b", prompt_lower)
+            and any(w in prompt_lower for w in ["quiz", "calculator", "widget", "tool", "page", "app", "dashboard", "portal", "system", "portfolio", "feature", "form"])
+            and any(w in prompt_lower for w in ["need", "create", "build", "make", "develop", "implement", "code", "write", "shows", "click"])
+        )
+        if is_software_build:
+            if classification.category in {PromptCategory.CREATIVE, PromptCategory.GENERAL, PromptCategory.EDUCATION}:
+                logger.info(
+                    "Classification consistency: reclassified from %s to CODING based on software build deliverable.",
+                    classification.category.value,
+                )
+                return PromptClassification(category=PromptCategory.CODING, confidence=0.95)
+
+        # 6. SUMMARIZATION Deliverable Invariant:
+        if classification.category == PromptCategory.SUMMARIZATION:
+            is_summary = bool(
+                re.search(r"\b(?:summarize|condense|digest|summary|synopsis|give\s+me\s+short\s+notes\s+from|tldr|key\s+takeaways)\b", prompt_lower)
+            )
+            if not is_summary:
+                if any(w in prompt_lower for w in ["build", "code", "implement", "app", "website", "script", "tool", "page", "system"]):
+                    logger.info("Classification consistency: reclassified from SUMMARIZATION to CODING based on action deliverable.")
+                    return PromptClassification(category=PromptCategory.CODING, confidence=0.90)
+                elif any(w in prompt_lower for w in ["write", "draft", "compose", "email", "essay", "post"]):
+                    logger.info("Classification consistency: reclassified from SUMMARIZATION to WRITING based on text deliverable.")
+                    return PromptClassification(category=PromptCategory.WRITING, confidence=0.90)
+                elif any(w in prompt_lower for w in ["plan", "schedule", "roadmap"]):
+                    logger.info("Classification consistency: reclassified from SUMMARIZATION to PLANNING based on planning deliverable.")
+                    return PromptClassification(category=PromptCategory.PLANNING, confidence=0.90)
+                elif any(w in prompt_lower for w in ["explain", "teach"]):
+                    logger.info("Classification consistency: reclassified from SUMMARIZATION to EDUCATION based on teaching deliverable.")
+                    return PromptClassification(category=PromptCategory.EDUCATION, confidence=0.90)
+                elif any(w in prompt_lower for w in ["research", "compare", "investigate"]):
+                    logger.info("Classification consistency: reclassified from SUMMARIZATION to RESEARCH based on research deliverable.")
+                    return PromptClassification(category=PromptCategory.RESEARCH, confidence=0.90)
+                else:
+                    return PromptClassification(category=PromptCategory.GENERAL, confidence=0.85)
+
+        return classification
+
+    def _parse_and_validate(
+        self, raw_output: str
+    ) -> Tuple[Optional[PromptAnalysis], Optional[str], Optional[Exception]]:
+        """Clean, parse JSON, and validate against PromptAnalysis schema. Returns (analysis, issue_description, exception)."""
+        cleaned = self._clean_json_content(raw_output)
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError as exc:
+            return None, f"invalid JSON: {exc}", exc
+
+        if not isinstance(parsed, dict):
+            return None, "response is not a JSON object", ValueError("Response is not a JSON object")
+
+        try:
+            analysis = PromptAnalysis.model_validate(parsed)
+            return analysis, None, None
+        except ValidationError as exc:
+            missing_fields = [
+                str(err.get("loc", [""])[0])
+                for err in exc.errors()
+                if err.get("type") in {"missing", "field_required"}
+            ]
+            if missing_fields:
+                issue = f"missing required field(s): {', '.join(missing_fields)}"
+            else:
+                issue = f"does not match the required schema: {exc}"
+            return None, issue, exc
+
+    def _recover_general_deliverables_and_constraints(
+        self, raw_prompt: str, analysis: PromptAnalysis
+    ) -> None:
+        """General invariant recovery for deliverables, quantities, referents, constraints, and negative constraints."""
+        prompt_lower = raw_prompt.lower()
+
+        # 1. Negative constraints: e.g. "don't use Bootstrap", "avoid jQuery", "without Tailwind"
+        neg_matches = re.finditer(
+            r"\b(?:don't\s+use|do\s+not\s+use|avoid|without)\s+([a-zA-Z0-9\.\-]+(?:\s+[a-zA-Z0-9\.\-]+)?)\b",
+            prompt_lower,
+        )
+        for nm in neg_matches:
+            neg_item = nm.group(1).strip()
+            if neg_item not in {"like", "a", "an", "the", "wait"} and not self._is_superseded_or_rejected(neg_item, prompt_lower):
+                constraint_str = f"do not use {neg_item}"
+                if not any(neg_item in c.lower() for c in analysis.constraints):
+                    analysis.constraints.append(constraint_str)
+
+        # 2. Limits & word counts: e.g. "under 80 words", "under 200 words", "at most 100 words"
+        limit_match = re.search(r"\b(?:under|less\s+than|max|maximum|at\s+most)\s+(\d+)\s+words?\b", prompt_lower)
+        if limit_match and not self._is_superseded_or_rejected(limit_match.group(0), prompt_lower):
+            limit_val = limit_match.group(1)
+            target_match = re.search(rf"\b(?:keep\s+(?:the\s+)?([a-zA-Z\-]+)|for\s+(?:the\s+)?([a-zA-Z\-]+))\s+[^\.\n]*?(?:under|less\s+than|max|at\s+most)\s+{limit_val}\s+words?\b", prompt_lower)
+            if target_match:
+                target_noun = target_match.group(1) or target_match.group(2)
+                limit_str = f"keep {target_noun} under {limit_val} words"
+            else:
+                limit_str = f"under {limit_val} words"
+            if not any(limit_val in c.lower() for c in analysis.constraints):
+                analysis.constraints.append(limit_str)
+
+        # 3. Explicit duration constraint (e.g., "8-week", "8 weeks", "3-day", "5-day")
+        duration_match = re.search(r"\b(\d+[\s-]*(?:week|month|day|hour)s?)\b", prompt_lower)
+        if duration_match and not self._is_superseded_or_rejected(duration_match.group(1), prompt_lower):
+            dur_val = duration_match.group(1).strip()
+            dur_str = f"{dur_val.replace(' ', '-')} duration"
+            if not any(dur_val in c.lower() for c in analysis.constraints) and not any(dur_val in r.lower() for r in analysis.explicit_requirements):
+                analysis.constraints.append(dur_str)
+
+        # 4. Quantity + Deliverable recovery (e.g., "4 science fair ideas", "3 newsletter subject lines", "4 practice questions")
+        qty_matches = re.finditer(
+            r"\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+([a-zA-Z\-]+(?:\s+(?!and\b|then\b|or\b|but\b|also\b|plus\b|with\b|after\b|to\b|for\b|that\b|which\b|who\b)[a-zA-Z\-]+){0,2})\b",
+            prompt_lower,
+        )
+        num_map = {"one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10"}
+        for qm in qty_matches:
+            qty_word, noun_phrase = qm.group(1), qm.group(2).strip()
+            if any(unit in noun_phrase for unit in ["week", "month", "day", "hour", "year", "minute", "word"]):
+                continue
+            if self._is_superseded_or_rejected(noun_phrase, prompt_lower):
+                continue
+            qty_digit = num_map.get(qty_word, qty_word)
+            item_phrase = f"{qty_digit} {noun_phrase}".strip()
+            if not any(qty_digit in r.lower() and any(w in r.lower() for w in noun_phrase.split()) for r in analysis.explicit_requirements):
+                analysis.explicit_requirements.append(item_phrase)
+
+        # 5. Compound Action Deliverables:
+        # Selection / Referent: "choose the strongest one", "pick one", "choose one", "select the best one"
+        if re.search(r"\b(?:choose|pick|select)\s+(?:the\s+)?(?:strongest|best|one|first|second)\b", prompt_lower):
+            sel_match = re.search(r"\b(?:choose|pick|select)\s+(?:the\s+)?([a-zA-Z\-]+(?:\s+[a-zA-Z\-]+)?)\b", prompt_lower)
+            sel_target = sel_match.group(1) if sel_match else "best option"
+            sel_clause = f"select {sel_target}"
+            if not any(w in r.lower() for r in analysis.explicit_requirements for w in ["select", "choose", "pick"]):
+                analysis.explicit_requirements.append(sel_clause)
+
+        # Explanation: "explain why", "explain the reasoning"
+        if re.search(r"\bexplain\s+(?:why|the\s+reasoning|reasons?)\b", prompt_lower) and not self._is_superseded_or_rejected("explain", prompt_lower):
+            if not any("explain" in r.lower() for r in analysis.explicit_requirements):
+                analysis.explicit_requirements.append("explain reasoning")
+
+        # Drafting / expanding referents: "draft the second one", "expand the second", "develop idea #2"
+        draft_ref_match = re.search(
+            r"\b(?:draft|expand|develop|write)\s+(?:the\s+)?(?:idea\s+|option\s+|item\s+)?(first|second|third|#\d+|\d+(?:st|nd|rd|th))\s*(?:one|idea|option|subject\s+line|item)?\b",
+            prompt_lower,
+        )
+        if draft_ref_match and not self._is_superseded_or_rejected(draft_ref_match.group(0), prompt_lower):
+            ref_item = f"draft {draft_ref_match.group(1)} item"
+            if not any(w in r.lower() for r in analysis.explicit_requirements for w in ["draft", "expand", "develop"]):
+                analysis.explicit_requirements.append(ref_item)
+
+        # Comparative deliverable: "compare the main approaches", "compare them"
+        if re.search(r"\bcompare\s+(?:the\s+)?(?:main\s+)?(?:approaches|methods|options|items|them)\b", prompt_lower):
+            if not any("compare" in r.lower() for r in analysis.explicit_requirements):
+                analysis.explicit_requirements.append("compare main approaches")
+
+        # Output format deliverable: "in a table", "as a table", "summarize them in a table"
+        if re.search(r"\b(?:in|as)\s+a\s+table\b", prompt_lower) or re.search(r"\btable\s+format\b", prompt_lower):
+            if not any("table" in r.lower() for r in analysis.explicit_requirements) and not any("table" in c.lower() for c in analysis.constraints):
+                analysis.explicit_requirements.append("summary table")
+
+        # 6. Recommendation deliverable: e.g. "tell them what shoes to buy", "recommend laptops", "recommend books"
+        rec_match = re.search(r"\b(?:tell\s+(?:them|me|users)\s+what\s+([a-zA-Z\-]+)\s+to\s+buy|recommend(?:s|ing)?\s+([a-zA-Z\-]+))\b", prompt_lower)
+        if rec_match:
+            rec_target = rec_match.group(1) or rec_match.group(2)
+            if rec_target and not self._is_superseded_or_rejected(rec_target, prompt_lower):
+                rec_str = f"{rec_target} recommendations"
+                if not any("recommend" in r.lower() for r in analysis.explicit_requirements):
+                    analysis.explicit_requirements.append(rec_str)
+
+        # 7. Functional software/interactive deliverables:
+        functional_components = ["quiz", "calculator", "dashboard", "contact form", "landing page", "results"]
+        for comp in functional_components:
+            if re.search(rf"\b{re.escape(comp)}\b", prompt_lower) and not self._is_superseded_or_rejected(comp, prompt_lower):
+                if not any(comp in r.lower() for r in analysis.explicit_requirements):
+                    analysis.explicit_requirements.append(comp)
+
+        # Recover explicit technical tools directly stated in prompt if omitted by model and not superseded
+        known_explicit_tools = [
+            ("python", "Python"),
+            ("react", "React"),
+            ("fastapi", "FastAPI"),
+            ("postgresql", "PostgreSQL"),
+            ("angular", "Angular"),
+            ("vue", "Vue"),
+            ("django", "Django"),
+            ("html", "HTML"),
+            ("css", "CSS"),
+            ("javascript", "JavaScript"),
+            ("typescript", "TypeScript"),
+        ]
+        for tech_key, tech_name in known_explicit_tools:
+            if re.search(rf"\b{tech_key}\b", prompt_lower) and not self._is_superseded_or_rejected(tech_key, prompt_lower):
+                if not any(tech_key == r.lower() for r in analysis.explicit_requirements):
+                    analysis.explicit_requirements.append(tech_name)
+
+    def _is_vague_or_non_answer(self, answer: str) -> bool:
+        """Detect generally weak or non-substantive user answers across domains."""
+        cleaned = answer.strip().lower()
+        if not cleaned:
+            return True
+        vague_phrases = {
+            "i don't know", "i dont know", "dont know", "not sure", "idk",
+            "whatever", "anything", "you decide", "no preference",
+            "doesn't matter", "doesnt matter", "any", "no clue", "up to you",
+            "none", "n/a", "na", "not applicable", "unknown", "skip",
+        }
+        return cleaned in vague_phrases or (len(cleaned) <= 2 and cleaned not in {"ui", "ai", "db", "go", "r", "c", "js", "ts"})
+
+    def _is_duplicate_question(
+        self,
+        question: ClarificationQuestion,
+        answered_items: list[ClarificationAnswer],
+    ) -> bool:
+        """Check if a candidate clarification question targets an already meaningfully answered dimension or question."""
+        q_target = (question.target_dimension or "").strip().lower()
+        q_text = (question.question or "").strip().lower()
+
+        for item in answered_items:
+            # If the user's answer was vague / non-substantive, the dimension was not meaningfully answered
+            if self._is_vague_or_non_answer(item.answer):
+                continue
+
+            # 1. Target dimension comparison
+            item_target = (item.target_dimension or "").strip().lower()
+            if item_target and q_target:
+                if q_target == item_target:
+                    return True
+                # Keyword overlap on non-generic words
+                q_words = {w for w in re.findall(r"\b[a-z]{3,}\b", q_target) if w not in STOP_WORDS}
+                item_words = {w for w in re.findall(r"\b[a-z]{3,}\b", item_target) if w not in STOP_WORDS}
+                if q_words and item_words and len(q_words & item_words) >= max(1, min(len(q_words), len(item_words))):
+                    return True
+
+            # 2. Question text similarity
+            item_text = (item.question or "").strip().lower()
+            if item_text and q_text:
+                if q_text == item_text:
+                    return True
+                q_words = {w for w in re.findall(r"\b[a-z]{3,}\b", q_text) if w not in STOP_WORDS}
+                item_words = {w for w in re.findall(r"\b[a-z]{3,}\b", item_text) if w not in STOP_WORDS}
+                if q_words and item_words:
+                    overlap = len(q_words & item_words)
+                    if overlap / max(len(q_words), len(item_words)) >= 0.6:
+                        return True
+
+        return False
+
+    def _analyze_deliverable_semantics(
+        self,
+        raw_prompt: str,
+        analysis: PromptAnalysis,
+        clarification_answers: Optional[list[ClarificationAnswer]] = None,
+    ) -> DeliverableSemantics:
+        """Decompose request into deliverable container vs functional purpose / intended outcome across all categories."""
+        prompt_lower = raw_prompt.lower()
+        words = re.findall(r"\b[a-zA-Z0-9_\-]+\b", prompt_lower)
+
+        # 1. Authoritative clarification answers: if user answered functional purpose or what to accomplish
+        if clarification_answers:
+            substantive_answers = [
+                ca.answer.strip() for ca in clarification_answers
+                if ca.answer and not self._is_vague_or_non_answer(ca.answer)
+            ]
+            if substantive_answers:
+                deliv_type = None
+                if hasattr(analysis, "deliverable_semantics") and analysis.deliverable_semantics and analysis.deliverable_semantics.deliverable_type:
+                    deliv_type = analysis.deliverable_semantics.deliverable_type
+                return DeliverableSemantics(
+                    deliverable_type=deliv_type,
+                    intended_outcome="; ".join(substantive_answers),
+                    is_functionally_complete=True,
+                )
+
+        # 2. Inherently Self-Contained Operations (No separate purpose required):
+        # Operations where the action verb and its direct target fully specify what to do.
+        self_contained_patterns = [
+            r"\b(?:convert|transform|translate|parse)\s+([a-zA-Z0-9_\.\-]+(?:\s+[a-zA-Z0-9_\.\-]+)?)\s+(?:to|into)\s+([a-zA-Z0-9_\.\-]+)",
+            r"\b(?:summarize|condense|digest|synopsis)\b",
+            r"\b(?:explain|teach|tutoring)\s+(?:me\s+)?([a-zA-Z0-9_\.\-]+(?:\s+[a-zA-Z0-9_\.\-]+){0,4})",
+            r"\b(?:calculate|compute|solve|derive)\s+([a-zA-Z0-9_\.\-]+(?:\s+[a-zA-Z0-9_\.\-]+){0,4})",
+            r"\b(?:compare|contrast)\s+(?:the\s+)?([a-zA-Z0-9_\.\-]+(?:\s+[a-zA-Z0-9_\.\-]+){0,4})",
+            r"\b(?:debug|fix|find\s+bug|solve\s+issue|troubleshoot)\b",
+            r"\b(?:find|sort|filter|reverse|search)\s+(?:the\s+)?([a-zA-Z0-9_\.\-]+(?:\s+[a-zA-Z0-9_\.\-]+){0,3})",
+            r"\b(?:generate|brainstorm|give\s+me)\s+\d+\s+([a-zA-Z0-9_\.\-]+(?:\s+[a-zA-Z0-9_\.\-]+){0,3})",
+        ]
+        for pat in self_contained_patterns:
+            m = re.search(pat, prompt_lower)
+            if m:
+                return DeliverableSemantics(
+                    deliverable_type=None,
+                    intended_outcome=m.group(0),
+                    is_functionally_complete=True,
+                )
+
+        # 3. Detect Deliverable Containers:
+        # Generic container nouns across CODING, WRITING, PLANNING, CREATIVE, EDUCATION, RESEARCH
+        container_pattern = (
+            r"\b(?:build|create|make|develop|write|draft|design|generate|produce|code|prepare|implement|setup|set\s+up)\s+"
+            r"(?:me\s+)?(?:an?\s+|the\s+)?"
+            r"([a-zA-Z0-9_\-\s]{0,40}?)"
+            r"\b(web\s+app|web\s+application|website|webpage|page|app|application|software|tool|script|dashboard|system|service|bot|program|portal|extension|document|doc|report|email|letter|memo|plan|roadmap|schedule|presentation|slides|deck|story|image|visual|poster|prompt|template|curriculum|syllabus)\b"
+        )
+        container_match = re.search(container_pattern, prompt_lower)
+
+        # If no explicit creation verb was matched, check standalone container phrase
+        if not container_match:
+            standalone_match = re.search(
+                r"\b(?:an?\s+|the\s+)?([a-zA-Z0-9_\-\s]{0,30}?)\b(web\s+app|web\s+application|website|webpage|page|app|application|software|tool|script|dashboard|system|service|bot|program|portal|extension|document|doc|report|email|letter|memo|plan|roadmap|schedule|presentation|slides|deck|story|curriculum)\b",
+                prompt_lower,
+            )
+            if standalone_match:
+                container_match = standalone_match
+
+        if not container_match:
+            # If not a recognized container request, assume operation is complete if prompt has sufficient substance
+            return DeliverableSemantics(
+                deliverable_type=None,
+                intended_outcome=analysis.objective,
+                is_functionally_complete=len(words) >= 4,
+            )
+
+        preceding_modifiers = container_match.group(1).strip()
+        deliverable_name = container_match.group(2).strip()
+
+        # 4. Check for Functional Purpose / Intended Outcome clauses:
+        # A. Infinitive clause with substantive action verb: "to count words in a text file", "to track inventory", "to monitor servers", "to ask for an extension"
+        infinitive_match = re.search(
+            r"\bto\s+(?!(?:build|make|create|write|develop|do|help|start|code|use|be)\b)([a-zA-Z]{3,}(?:\s+[a-zA-Z0-9_\.\-]+){1,6})\b",
+            prompt_lower,
+        )
+
+        # B. Gerund clause: "for tracking warehouse inventory", "for managing projects", "for analyzing logs"
+        # Note: NOT platform names like "for telegram", "for android", "for mobile", "for web", "for desktop", "for me"
+        gerund_match = re.search(
+            r"\bfor\s+([a-zA-Z]{3,}ing(?:\s+[a-zA-Z0-9_\.\-]+){1,6})\b",
+            prompt_lower,
+        )
+
+        # C. Relative clause: "that answers customer support questions", "which calculates compound interest"
+        relative_match = re.search(
+            r"\b(?:that|which)\s+([a-zA-Z]{3,}(?:\s+[a-zA-Z0-9_\.\-]+){1,6})\b",
+            prompt_lower,
+        )
+
+        # D. Topic / Goal / Depiction clause: "about renewable energy", "explaining quantum physics", "of a cyberpunk city"
+        topic_match = re.search(
+            r"\b(?:about|regarding|outlining|detailing|explaining|discussing|comparing|depicting|showing|of)\s+([a-zA-Z0-9_\.\-]+(?:\s+[a-zA-Z0-9_\.\-]+){1,6})\b",
+            prompt_lower,
+        )
+        # Trip / destination planning: e.g. "for a 3-day trip to Tokyo"
+        trip_match = re.search(r"\bfor\s+(?:a\s+|an\s+)?(\d+[\s-]day\s+trip\s+to\s+[a-zA-Z0-9_\.\-]+)\b", prompt_lower)
+
+        # D2. Participial purpose clause following container: "email asking my lecturer...", "email announcing our product launch", "presentation explaining..."
+        remainder_after_container = prompt_lower[container_match.end():].strip() if container_match else ""
+        participle_match = re.search(
+            r"\b([a-zA-Z]{3,}ing(?:\s+[a-zA-Z0-9_\.\-]+){1,6})\b",
+            remainder_after_container,
+        )
+
+        # E. Substantive Domain Modifier before container:
+        # e.g., "inventory tracking dashboard", "weather bot", "word counter tool", "expense tracker app"
+        non_purpose_words = {
+            "a", "an", "the", "me", "my", "our", "simple", "basic", "complex", "advanced",
+            "light", "lightweight", "small", "large", "minimal", "modular", "clean",
+            "professional", "modern", "cool", "new", "fresh", "interactive", "responsive",
+            "automated", "dynamic", "smart", "fast", "static", "secure", "friendly", "formal",
+            "casual", "brief", "concise", "web", "mobile", "desktop", "telegram", "slack",
+            "discord", "cli", "terminal", "console", "ios", "android", "windows", "linux", "macos", "mac",
+            "browser", "cloud", "server", "client", "frontend", "backend", "fullstack", "docker",
+            "pdf", "powerpoint", "word", "excel", "markdown", "html", "css", "javascript", "typescript",
+            "js", "ts", "python", "node", "nodejs", "react", "vue", "angular", "svelte", "nextjs",
+            "django", "flask", "fastapi", "express", "tailwind", "bootstrap", "good", "great", "best", "little",
+            "swift", "kotlin", "java", "rust", "go", "golang", "c", "cpp", "csharp", "ruby", "php", "sql",
+            "programming", "language", "code", "coding", "framework", "library", "stack", "tech",
+            "technology", "tooling", "platform", "environment", "device", "medium", "format",
+            "with", "using", "in", "for", "via",
+        }
+        modifier_words = set(re.findall(r"\b[a-zA-Z0-9_\-]+\b", preceding_modifiers))
+        substantive_modifiers = [w for w in modifier_words if w not in non_purpose_words]
+
+        # F. Substantive explicit requirements in analysis:
+        non_purpose_reqs = non_purpose_words | {
+            "app", "web app", "tool", "script", "document", "plan", "presentation",
+            "dashboard", "bot", "system", "software", "slides", "email",
+        }
+        substantive_reqs = [
+            r for r in analysis.explicit_requirements
+            if r.lower().strip() not in non_purpose_reqs
+            and not all(w in non_purpose_reqs for w in re.findall(r"\b[a-zA-Z0-9_\-]+\b", r.lower()))
+        ]
+
+        found_purpose = None
+        if infinitive_match:
+            found_purpose = infinitive_match.group(0).strip()
+        elif gerund_match:
+            found_purpose = gerund_match.group(0).strip()
+        elif relative_match:
+            found_purpose = relative_match.group(0).strip()
+        elif topic_match:
+            found_purpose = topic_match.group(0).strip()
+        elif trip_match:
+            found_purpose = trip_match.group(0).strip()
+        elif participle_match:
+            found_purpose = participle_match.group(0).strip()
+        elif substantive_modifiers:
+            found_purpose = " ".join(substantive_modifiers)
+        elif substantive_reqs:
+            found_purpose = ", ".join(substantive_reqs)
+
+        is_complete = found_purpose is not None
+
+        return DeliverableSemantics(
+            deliverable_type=deliverable_name,
+            intended_outcome=found_purpose,
+            is_functionally_complete=is_complete,
+        )
+
+    def _normalize_ambiguity(
+        self,
+        analysis: PromptAnalysis,
+        user_prompt: str,
+        clarification_answers: Optional[list[ClarificationAnswer]] = None,
+        allow_reasonable_assumptions: bool = False,
+    ) -> None:
+        """Central consistency normalization for ambiguity heuristic, questions, and clarification state."""
+        prompt_lower = user_prompt.lower()
+        amb = analysis.ambiguity
+
+        # Always compute deliverable_semantics based on authoritative prompt
+        analysis.deliverable_semantics = self._analyze_deliverable_semantics(
+            raw_prompt=user_prompt,
+            analysis=analysis,
+            clarification_answers=clarification_answers,
+        )
+
+        # 1. If user chose reasonable assumptions: bypass clarification without falsifying score/level
+        if allow_reasonable_assumptions:
+            amb.needs_clarification = False
+            amb.questions = []
+            return
+
+        # 2. Defensive sanitization of questions: ensure strict neutrality and no injected candidate tech
+        sanitized_questions = []
+        for idx, q in enumerate(amb.questions[:3], start=1):
+            q_text = q.question
+            has_forbidden = False
+            for tech in FORBIDDEN_TECH_EXAMPLES:
+                if re.search(rf"\b{re.escape(tech)}\b", q_text, flags=re.IGNORECASE):
+                    has_forbidden = True
+                    break
+            if has_forbidden:
+                if any(w in q_text.lower() for w in ["database", "storage", "postgres", "sqlite", "mongodb"]):
+                    q_text = "Do you have a preferred data storage method, or should the implementation select a reasonable option?"
+                else:
+                    q_text = "Do you have a required technology stack or platform, or should the implementation select a reasonable option?"
+            sanitized_questions.append(
+                ClarificationQuestion(
+                    id=f"q{idx}",
+                    question=q_text,
+                    reason=q.reason or "Clarification required to resolve primary intent.",
+                    target_dimension=q.target_dimension or "unspecified dimension",
+                )
+            )
+        amb.questions = sanitized_questions
+
+        # 3. Filter valid (non-blank) clarification answers
+        valid_answers = [
+            ca for ca in (clarification_answers or [])
+            if ca.answer and ca.answer.strip()
+        ]
+
+        # 4. Handle follow-up evaluation when clarification answers are present
+        if valid_answers:
+            # Incorporate substantive answers into explicit_requirements or preferences if not already present
+            for ca in valid_answers:
+                ans_text = ca.answer.strip()
+                if not self._is_vague_or_non_answer(ans_text):
+                    if any(t in ans_text.lower() for t in ["tone", "style", "format"]):
+                        if ans_text not in analysis.preferences:
+                            analysis.preferences.append(ans_text)
+                    else:
+                        if ans_text not in analysis.explicit_requirements:
+                            analysis.explicit_requirements.append(ans_text)
+
+            # Suppress duplicate questions targeting already meaningfully answered dimensions
+            surviving_questions = [
+                q for q in amb.questions
+                if not self._is_duplicate_question(q, valid_answers)
+            ]
+
+            amb.questions = [
+                ClarificationQuestion(
+                    id=f"q{idx}",
+                    question=q.question,
+                    reason=q.reason,
+                    target_dimension=q.target_dimension,
+                )
+                for idx, q in enumerate(surviving_questions[:3], start=1)
+            ]
+
+            if not amb.questions:
+                amb.needs_clarification = False
+            else:
+                amb.needs_clarification = True
+                if amb.score < 65:
+                    amb.score = 65
+                    amb.level = AmbiguityLevel.HIGH
+
+            return
+
+        # 5. Initial request assessment: check for fundamentally underspecified requests across all domains
+        words = re.findall(r"\b[a-zA-Z0-9_\-]+\b", prompt_lower)
+        significant_words = [w for w in words if w not in STOP_WORDS and w not in GENERIC_FILLER_WORDS]
+
+        is_ultra_vague = (
+            len(words) <= 7
+            and len(significant_words) == 0
+            and len(analysis.explicit_requirements) == 0
+            and len(analysis.preferences) == 0
+        )
+
+        deliv = analysis.deliverable_semantics
+        is_missing_purpose = bool(deliv and not deliv.is_functionally_complete)
+
+        if is_ultra_vague or is_missing_purpose:
+            amb.score = max(amb.score, 75)
+            amb.level = AmbiguityLevel.HIGH
+            amb.needs_clarification = True
+            artifact_name = (deliv.deliverable_type if deliv and deliv.deliverable_type else "deliverable")
+            if not amb.questions:
+                amb.questions = [
+                    ClarificationQuestion(
+                        id="q1",
+                        question=f"What should the requested {artifact_name} help accomplish or what is its primary purpose?",
+                        reason=f"The deliverable container ({artifact_name}) is specified, but its functional purpose and intended outcome are absent.",
+                        target_dimension="functional purpose",
+                    )
+                ]
+        else:
+            # For specific prompts across domains: MISSING CONTEXT != REQUIRED CLARIFICATION
+            if amb.score < 65:
+                amb.needs_clarification = False
+                amb.questions = []
+            elif amb.score >= 65 and len(significant_words) >= 3 and not is_ultra_vague and not is_missing_purpose:
+                amb.score = 25
+                amb.level = AmbiguityLevel.LOW
+                amb.needs_clarification = False
+                amb.questions = []
+
+        # Final invariant checks
+        if not amb.needs_clarification:
+            amb.questions = []
+        elif amb.needs_clarification and not amb.questions:
+            amb.needs_clarification = False
+
+    async def analyze(
+        self,
+        user_prompt: str,
+        clarification_answers: Optional[list[ClarificationAnswer]] = None,
+        allow_reasonable_assumptions: bool = False,
+    ) -> PromptAnalysis:
+        """Analyze a raw human prompt and return a validated PromptAnalysis structure with 1-attempt recovery."""
+        user_content = user_prompt
+        valid_answers = [
+            ca for ca in (clarification_answers or [])
+            if ca.answer and ca.answer.strip()
+        ]
+        if valid_answers:
+            answers_formatted = []
+            for ca in valid_answers:
+                dim_line = f"- Target dimension: {ca.target_dimension.strip()}\n" if ca.target_dimension and ca.target_dimension.strip() else ""
+                answers_formatted.append(
+                    f"{dim_line}- Question: {ca.question.strip()}\n- User answer: {ca.answer.strip()}"
+                )
+            clarifications_block = "\n\n".join(answers_formatted)
+            user_content = (
+                f"ORIGINAL REQUEST:\n\"{user_prompt}\"\n\n"
+                f"USER CLARIFICATIONS:\n{clarifications_block}\n\n"
+                f"INSTRUCTIONS:\n"
+                f"Treat clarification answers as authoritative user-provided information.\n"
+                f"Update the structured interpretation accordingly.\n"
+                f"Recalculate ambiguity based on the combined information.\n"
+                f"Do not re-ask questions targeting dimensions the user has already answered."
+            )
+
+        schema = self._build_schema_contract()
+        messages = [
+            {"role": "system", "content": ANALYZER_SYSTEM_PROMPT},
+            {"role": "user", "content": user_content},
+        ]
+
+        # ATTEMPT 1: Primary structured analysis call using native JSON schema contract
+        raw_output = await self.client.chat(messages=messages, format=schema)
+        analysis, issue, exc = self._parse_and_validate(raw_output)
+
+        # If Attempt 1 failed, trigger controlled recovery (MAXIMUM 1 RETRY)
+        if analysis is None:
+            logger.warning(
+                "Structured analysis attempt 1 failed validation: %s. Initiating recovery attempt.",
+                issue,
+            )
+            repair_messages = [
+                {"role": "system", "content": ANALYZER_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Original user prompt:\n\"{user_content}\"\n\n"
+                        f"Your previous structured analysis was incomplete or invalid ({issue}).\n"
+                        "Return a COMPLETE PromptAnalysis JSON object containing every required field:\n"
+                        "- classification (with category and confidence)\n"
+                        "- objective\n"
+                        "- explicit_requirements (use [] if none)\n"
+                        "- constraints (use [] if none)\n"
+                        "- preferences (use [] if none)\n"
+                        "- missing_context (use [] if none)\n"
+                        "- ambiguity (with score, level, needs_clarification, reasons, questions)\n\n"
+                        "Do not omit objective or ambiguity. Use [] for empty list fields. Return only schema-compliant structured output."
+                    ),
+                },
+            ]
+            raw_repair_output = await self.client.chat(messages=repair_messages, format=schema)
+            analysis, repair_issue, repair_exc = self._parse_and_validate(raw_repair_output)
+
+            if analysis is None:
+                logger.error(
+                    "Structured analysis recovery attempt failed validation: %s",
+                    repair_issue,
+                )
+                raise OllamaResponseError(
+                    f"Ollama returned analysis that does not match the required schema: {repair_issue}"
+                ) from repair_exc
+
+        prompt_lower = user_prompt.lower()
+
+        # Invariant: Empty fields must be []
+        analysis.explicit_requirements = [
+            r for r in analysis.explicit_requirements
+            if r.strip() and r.strip().lower() not in {"none specified", "none", "n/a", "not specified"}
+        ]
+        analysis.constraints = [
+            c for c in analysis.constraints
+            if c.strip() and c.strip().lower() not in {"none specified", "none", "n/a", "not specified"}
+        ]
+        analysis.preferences = [
+            p for p in analysis.preferences
+            if p.strip() and p.strip().lower() not in {"none specified", "none", "n/a", "not specified"}
+        ]
+        analysis.missing_context = [
+            m for m in analysis.missing_context
+            if m.strip() and m.strip().lower() not in {"none specified", "none", "n/a", "not specified"}
+        ]
+
+        # Recover style/presentation preferences present in user prompt, removing superseded ones
+        analysis.preferences = self._recover_style_preferences(user_prompt, analysis.preferences)
+
+        # Filter out forbidden candidate tech from explicit_requirements unless explicitly mentioned in prompt
+        filtered_reqs = []
+        for req in analysis.explicit_requirements:
+            req_lower = req.strip().lower()
+            if any(tech in req_lower for tech in FORBIDDEN_TECH_EXAMPLES):
+                if not any(re.search(rf"\b{re.escape(tech)}\b", prompt_lower) for tech in FORBIDDEN_TECH_EXAMPLES if tech in req_lower):
+                    continue
+            filtered_reqs.append(req)
+
+        # Remove any requirements superseded or rejected by the user
+        analysis.explicit_requirements = [
+            r for r in filtered_reqs
+            if not self._is_superseded_or_rejected(r.lower(), prompt_lower)
+        ]
+
+        # Recover explicit deliverables, technical tools, quantities, referents, and constraints
+        self._recover_general_deliverables_and_constraints(user_prompt, analysis)
+
+        # Apply principled classification consistency based on primary deliverable
+        analysis.classification = self._apply_classification_consistency(user_prompt, analysis.classification)
+
+        analysis.missing_context = self._clean_missing_context(
+            analysis.missing_context,
+            analysis.objective,
+            analysis.explicit_requirements,
+            analysis.preferences,
+            user_prompt,
+            category=analysis.classification.category.value,
+        )
+
+        # Recover direct communication essential missing context (recipient, purpose) if omitted by model
+        comm_match = re.search(r"\b(email|letter|memo|message)\b", prompt_lower)
+        if comm_match:
+            comm_type = comm_match.group(1)
+            if not re.search(r"\b(?:to|recipient)\b", prompt_lower):
+                if not any("recipient" in m.lower() for m in analysis.missing_context):
+                    analysis.missing_context.insert(0, "recipient")
+            if not re.search(r"\b(?:about|regarding|topic|purpose)\b", prompt_lower):
+                purpose_label = f"{comm_type} purpose" if comm_type == "email" else "communication purpose"
+                if not any("purpose" in m.lower() or "topic" in m.lower() for m in analysis.missing_context):
+                    analysis.missing_context.append(purpose_label)
+
+        # Recover neutral software missing dimensions if model restatements were removed
+        has_web = bool(re.search(r"\b(?:website|webpage|web\s+page|site|page\s+on\s+my\s+website)\b", prompt_lower))
+        if analysis.classification.category == PromptCategory.CODING and not analysis.missing_context:
+            if re.search(r"\b(?:app|application|system|tool)\b", prompt_lower):
+                dims = ["data storage method"]
+                if not has_web:
+                    dims.insert(0, "application interface type")
+                analysis.missing_context = dims
+        elif analysis.classification.category == PromptCategory.CODING and has_web:
+            # Ensure no interface type lingers in missing_context for web requests
+            analysis.missing_context = [
+                m for m in analysis.missing_context
+                if not any(t in m.lower() for t in ["interface type", "application interface", "quiz interface", "web interface", "ui type"])
+            ]
+
+        # Apply ambiguity normalization and consistency
+        self._normalize_ambiguity(
+            analysis=analysis,
+            user_prompt=user_prompt,
+            clarification_answers=clarification_answers,
+            allow_reasonable_assumptions=allow_reasonable_assumptions,
+        )
+
+        # Step: Check source grounding
+        grounding = self.check_analysis_grounding(analysis, user_prompt, clarification_answers)
+        if not grounding.is_grounded:
+            logger.warning(
+                "Analysis grounding failed with %d unsupported item(s): %s. Initiating analysis repair.",
+                len(grounding.unsupported_items),
+                grounding.unsupported_items,
+            )
+            # Run AT MOST ONE controlled analysis repair
+            repaired_analysis = await self.repair_analysis(
+                user_content=user_content,
+                previous_analysis=analysis,
+                unsupported_items=grounding.unsupported_items,
+                schema=schema,
+            )
+            # Apply normalizations to repaired analysis
+            repaired_analysis.explicit_requirements = [
+                r for r in repaired_analysis.explicit_requirements
+                if not self._is_superseded_or_rejected(r.lower(), prompt_lower)
+            ]
+            repaired_analysis.preferences = self._recover_style_preferences(user_prompt, repaired_analysis.preferences)
+            self._recover_general_deliverables_and_constraints(user_prompt, repaired_analysis)
+            repaired_analysis.classification = self._apply_classification_consistency(user_prompt, repaired_analysis.classification)
+            self._normalize_ambiguity(
+                analysis=repaired_analysis,
+                user_prompt=user_prompt,
+                clarification_answers=clarification_answers,
+                allow_reasonable_assumptions=allow_reasonable_assumptions,
+            )
+            repaired_grounding = self.check_analysis_grounding(repaired_analysis, user_prompt, clarification_answers)
+            if repaired_grounding.is_grounded:
+                logger.info("Analysis repair passed successfully.")
+            else:
+                logger.warning(
+                    "Analysis repair failed: %d unsupported item(s) remain: %s.",
+                    len(repaired_grounding.unsupported_items),
+                    repaired_grounding.unsupported_items,
+                )
+            repaired_analysis.grounding = repaired_grounding
+            return repaired_analysis
+
+        logger.info("Analysis grounding passed.")
+        analysis.grounding = grounding
+        return analysis
+
+    def check_analysis_grounding(
+        self,
+        analysis: PromptAnalysis,
+        raw_prompt: str,
+        clarification_answers: Optional[list[ClarificationAnswer]] = None,
+    ) -> AnalysisGrounding:
+        """Verify that every asserted fact in PromptAnalysis is grounded in authoritative user sources."""
+        raw_lower = raw_prompt.lower()
+        user_corpus = raw_lower
+        clarification_text = ""
+        if clarification_answers:
+            clarification_text = " ".join(ca.answer.lower() for ca in clarification_answers if ca.answer)
+            user_corpus += " " + clarification_text
+
+        evidence_list: list[GroundingEvidence] = []
+        unsupported_items: list[str] = []
+
+        # 1. Check Preferences Grounding
+        for pref in analysis.preferences:
+            pref_lower = pref.lower().strip()
+
+            # Semantic Role Verification: Modifiers must match contextual meaning
+            # (A) Check "simple explanation" vs "simple artifact"
+            if any(term in pref_lower for term in ["simple explanation", "explain simply", "simple language"]):
+                # If "simple" modifies an artifact deliverable and prompt does NOT request explanation
+                if re.search(r"\bsimple\s+(?:web\s+app|app|application|tool|script|dashboard|page|calculator|system|database|api|program|bot|workflow|model|service)\b", user_corpus):
+                    if not re.search(r"\b(?:explain|explanation|terms|words|concept|breakdown)\b", user_corpus):
+                        unsupported_items.append(f"unsupported preference (semantic mismatch: 'simple' modifies artifact deliverable, not explanation style): '{pref}'")
+                        continue
+
+            # (B) Check "professional tone" vs "professional artifact"
+            if "professional tone" in pref_lower or "sound professional" in pref_lower:
+                if re.search(r"\bprofessional\s+(?:portfolio|network|networking|headshot|photo|camera|equipment|software|tool|app|website)\b", user_corpus):
+                    if not re.search(r"\b(?:tone|manner|email|letter|message|memo|writing|write|draft)\b", user_corpus):
+                        unsupported_items.append(f"unsupported preference (semantic mismatch: 'professional' modifies artifact, not writing tone): '{pref}'")
+                        continue
+
+            # (C) Check "formal tone" vs "formal artifact/method"
+            if "formal tone" in pref_lower:
+                if re.search(r"\bformal\s+(?:verification|logic|methods?|proof|grammar|system|semantics)\b", user_corpus):
+                    if not re.search(r"\b(?:tone|manner|email|letter|message|writing|write)\b", user_corpus):
+                        unsupported_items.append(f"unsupported preference (semantic mismatch: 'formal' modifies method or domain, not writing tone): '{pref}'")
+                        continue
+
+            # (D) Check "light theme" / "light mode" vs "light artifact"
+            if any(t in pref_lower for t in ["light theme", "light mode"]):
+                if re.search(r"\blight(?:weight)?\s+(?:database|db|container|library|dependency|footprint|service)\b", user_corpus):
+                    if not re.search(r"\b(?:theme|mode|ui|visual|color|style)\b", user_corpus):
+                        unsupported_items.append(f"unsupported preference (semantic mismatch: 'light' modifies resource footprint, not visual theme): '{pref}'")
+                        continue
+
+            # (E) Check "fast response style" vs "fast artifact"
+            if any(t in pref_lower for t in ["fast response", "fast style"]):
+                if re.search(r"\bfast\s+(?:algorithm|query|search|function|script|execution|runtime)\b", user_corpus):
+                    unsupported_items.append(f"unsupported preference (semantic mismatch: 'fast' modifies performance, not response style): '{pref}'")
+                    continue
+
+            pref_words = [
+                w for w in re.findall(r"\b[a-zA-Z]{3,}\b", pref_lower)
+                if w not in {"tone", "style", "explanation", "and", "the", "with", "format"}
+            ]
+            matched_word = None
+            for pw in pref_words:
+                if pw in {"simple", "simply"}:
+                    stem_pat = r"\b(?:simple|simply)\b"
+                elif pw.endswith("ly") and len(pw) > 4:
+                    stem_pat = rf"\b(?:{re.escape(pw)}|{re.escape(pw[:-2])})\b"
+                else:
+                    stem_pat = rf"\b{re.escape(pw)}(?:ly)?\b"
+                if re.search(stem_pat, user_corpus) and not self._is_superseded_or_rejected(pw, raw_lower):
+                    matched_word = pw
+                    break
+
+            if matched_word:
+                src = SourceType.CLARIFICATION if matched_word in clarification_text else SourceType.ORIGINAL_PROMPT
+                evidence_list.append(
+                    GroundingEvidence(
+                        field="preferences",
+                        value=pref,
+                        source_type=src,
+                        evidence=matched_word,
+                        relation=GroundingRelation.MODIFIES_OUTPUT_STYLE,
+                    )
+                )
+            else:
+                unsupported_items.append(f"unsupported preference: '{pref}'")
+
+        # 2. Check Constraints Grounding
+        for c in analysis.constraints:
+            c_lower = c.lower().strip()
+            c_words = [
+                w for w in re.findall(r"\b[a-zA-Z0-9_\-]{3,}\b", c_lower)
+                if w not in STOP_WORDS and w not in GENERIC_FILLER_WORDS
+            ]
+            has_match = False
+            for cw in c_words:
+                if cw in user_corpus and not self._is_superseded_or_rejected(cw, raw_lower):
+                    has_match = True
+                    break
+            if has_match:
+                src = SourceType.CLARIFICATION if any(cw in clarification_text for cw in c_words) else SourceType.ORIGINAL_PROMPT
+                evidence_list.append(
+                    GroundingEvidence(
+                        field="constraints",
+                        value=c,
+                        source_type=src,
+                        evidence=c,
+                        relation=GroundingRelation.CONSTRAINT,
+                    )
+                )
+            else:
+                unsupported_items.append(f"unsupported constraint: '{c}'")
+
+        # 3. Check Explicit Requirements Grounding
+        known_frameworks = {
+            "react", "vue", "angular", "svelte", "django", "flask", "fastapi",
+            "express", "node", "nodejs", "sqlite", "postgres", "postgresql",
+            "mongodb", "mysql", "bootstrap", "tailwind", "firebase", "aws",
+            "html", "css", "javascript", "typescript", "python",
+        }
+        for req in analysis.explicit_requirements:
+            req_lower = req.lower().strip()
+            # Flag unprompted named technologies
+            invented_tech = [t for t in known_frameworks if t in req_lower and t not in user_corpus]
+            if invented_tech:
+                unsupported_items.append(f"unsupported technology in explicit requirement: '{req}'")
+                continue
+
+            req_tokens = [
+                w for w in re.findall(r"\b[a-zA-Z0-9_\+\.\-]{3,}\b", req_lower)
+                if w not in STOP_WORDS
+            ]
+            if not req_tokens:
+                continue
+
+            token_found = False
+            for tok in req_tokens:
+                if tok in user_corpus:
+                    token_found = True
+                    break
+                # Stemming
+                if tok.endswith("ies") and tok[:-3] + "y" in user_corpus:
+                    token_found = True
+                    break
+                if tok.endswith("y") and tok[:-1] in user_corpus:
+                    token_found = True
+                    break
+                for sfx in ["ing", "tion", "ment", "ed", "er", "es", "s"]:
+                    if tok.endswith(sfx) and len(tok) - len(sfx) >= 3 and tok[:-len(sfx)] in user_corpus:
+                        token_found = True
+                        break
+
+            # Compound deliverables
+            if not token_found:
+                deliverable_actions = {
+                    "explain", "table", "select", "choose", "pick", "compare",
+                    "draft", "recommend", "curriculum", "schedule", "plan",
+                    "roadmap", "quiz", "calculator", "dashboard", "form",
+                }
+                if any(da in req_lower and da in user_corpus for da in deliverable_actions):
+                    token_found = True
+
+            if token_found:
+                src = SourceType.CLARIFICATION if any(tok in clarification_text for tok in req_tokens) else SourceType.ORIGINAL_PROMPT
+                rel = GroundingRelation.CLARIFICATION if src == SourceType.CLARIFICATION else GroundingRelation.MODIFIES_DELIVERABLE
+                evidence_list.append(
+                    GroundingEvidence(
+                        field="explicit_requirements",
+                        value=req,
+                        source_type=src,
+                        evidence=req,
+                        relation=rel,
+                    )
+                )
+            else:
+                unsupported_items.append(f"unsupported explicit requirement: '{req}'")
+
+        # 4. Check Objective Grounding (Anti-drift & Anti-hallucination)
+        obj_lower = (analysis.objective or "").lower().strip()
+        for platform_kw in ["mobile", "cross-platform", "ios", "android", "desktop"]:
+            if re.search(rf"\b{platform_kw}\b", obj_lower) and not re.search(rf"\b{platform_kw}\b", user_corpus):
+                unsupported_items.append(f"objective introduces unrequested platform: '{platform_kw}'")
+
+        for audience_kw in ["college students", "teenagers", "students", "faculty", "patients", "doctors"]:
+            if re.search(rf"\b{audience_kw}\b", obj_lower) and not re.search(rf"\b{audience_kw}\b", user_corpus):
+                unsupported_items.append(f"objective introduces unrequested audience/domain: '{audience_kw}'")
+
+        for tech_kw in known_frameworks:
+            if re.search(rf"\b{tech_kw}\b", obj_lower) and not re.search(rf"\b{tech_kw}\b", user_corpus):
+                unsupported_items.append(f"objective introduces unrequested technology: '{tech_kw}'")
+
+        # Check substantive domain drift
+        user_domain = {
+            w for w in re.findall(r"\b[a-zA-Z]{4,}\b", user_corpus)
+            if w not in STOP_WORDS and w not in GENERIC_FILLER_WORDS
+        }
+        if len(user_domain) >= 2:
+            matched_obj = sum(1 for w in user_domain if w in obj_lower)
+            if matched_obj == 0:
+                unsupported_items.append("objective completely drifted from user request")
+
+        # 5. Check Classification Grounding (Category drift)
+        if analysis.classification.category == PromptCategory.SUMMARIZATION:
+            is_summary = bool(
+                re.search(r"\b(?:summarize|condense|digest|summary|synopsis|tldr|key\s+takeaways)\b", raw_lower)
+            )
+            if not is_summary:
+                unsupported_items.append("classification is SUMMARIZATION without text or summarization deliverable")
+
+        is_grounded = len(unsupported_items) == 0
+        return AnalysisGrounding(
+            is_grounded=is_grounded,
+            evidence=evidence_list,
+            unsupported_items=unsupported_items,
+        )
+
+    async def repair_analysis(
+        self,
+        user_content: str,
+        previous_analysis: PromptAnalysis,
+        unsupported_items: list[str],
+        schema: Dict[str, Any],
+    ) -> PromptAnalysis:
+        """Regenerate structured analysis using only information supported by user words (max 1 repair attempt)."""
+        logger.info("Analysis repair started for %d unsupported item(s).", len(unsupported_items))
+        repair_messages = [
+            {"role": "system", "content": ANALYZER_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"USER REQUEST:\n\"{user_content}\"\n\n"
+                    f"PREVIOUS ANALYSIS:\n{previous_analysis.model_dump_json(indent=2)}\n\n"
+                    f"GROUNDING ISSUES DETECTED:\n"
+                    f"The previous analysis asserted the following unsupported items not found in the user's words or assigned the wrong semantic role:\n"
+                    + "\n".join(f"- {item}" for item in unsupported_items)
+                    + "\n\n"
+                    f"REPAIR INSTRUCTION:\n"
+                    f"Regenerate the structured analysis using ONLY information supported by the user's words.\n"
+                    f"Contextual Modifier Rule: If a source word exists (e.g., 'simple', 'professional', 'light'), determine what it modifies.\n"
+                    f"Do not confuse an artifact modifier ('simple web app') with an explanation or tone preference ('simple explanation').\n"
+                    f"Move unresolved information into missing_context instead of inventing it.\n"
+                    f"Do not invent technologies, platforms, audiences, preferences, or constraints.\n"
+                    f"Return a clean, grounded PromptAnalysis JSON object."
+                ),
+            },
+        ]
+        raw_repair_output = await self.client.chat(messages=repair_messages, format=schema)
+        analysis, repair_issue, _ = self._parse_and_validate(raw_repair_output)
+        if analysis is None:
+            logger.warning("Analysis repair schema validation failed: %s. Returning previous analysis.", repair_issue)
+            return previous_analysis
+        return analysis
+
+
+prompt_analyzer = PromptAnalyzer()
