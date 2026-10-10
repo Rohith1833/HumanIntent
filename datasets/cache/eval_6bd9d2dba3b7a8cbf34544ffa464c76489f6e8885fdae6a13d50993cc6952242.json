@@ -1,0 +1,57 @@
+{
+  "status": "enhanced",
+  "analysis_dict": {
+    "classification": {
+      "category": "DATA_ANALYSIS",
+      "confidence": 0.95
+    },
+    "objective": "Calculate median, p95, p99, and standard deviation from API response times",
+    "explicit_requirements": [
+      "API response times"
+    ],
+    "constraints": [],
+    "preferences": [],
+    "missing_context": [],
+    "ambiguity": {
+      "score": 0,
+      "level": "LOW",
+      "needs_clarification": false,
+      "reasons": [],
+      "questions": []
+    },
+    "grounding": {
+      "is_grounded": true,
+      "evidence": [
+        {
+          "field": "explicit_requirements",
+          "value": "API response times",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "API response times",
+          "relation": "MODIFIES_DELIVERABLE"
+        }
+      ],
+      "unsupported_items": []
+    },
+    "deliverable_semantics": {
+      "deliverable_type": null,
+      "intended_outcome": "calculate median latency p95 p99 and",
+      "is_functionally_complete": true
+    },
+    "intent_anchor": {
+      "action_family": "DATA_ANALYSIS",
+      "primary_action": "analyze supplied or referenced data",
+      "target_or_deliverable": "data analysis deliverable",
+      "confidence": 0.9,
+      "is_strong": true
+    },
+    "raw_category": "DATA_ANALYSIS"
+  },
+  "enhanced_prompt": "Act as an experienced data analyst and analytical consultant. Calculate the median, p95, p99, and standard deviation from API response times.\n\nCORE / EXPLICIT REQUIREMENTS:\nAPI response times",
+  "is_valid": true,
+  "validation_issues": [],
+  "quality_score": 99.0,
+  "inflation_ratio": 2.33,
+  "repaired": false,
+  "initial_rejected_prompt": null,
+  "initial_rejection_reason": null
+}

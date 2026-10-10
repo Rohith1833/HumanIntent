@@ -26,6 +26,13 @@ frontend/.env.*.local
 !backend/.env.example
 !frontend/.env.local.example
 
+# Local SQLite databases (Phase 8)
+*.db
+*.db-wal
+*.db-shm
+backend/data/
+data/
+
 # Node / Next.js
 node_modules/
 frontend/node_modules/

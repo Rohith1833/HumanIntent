@@ -1,0 +1,12 @@
+{
+  "variant_id": "4da0d3cc-644d-4294-ba67-3a8fa600e98d",
+  "seed_id": "debugging_001",
+  "prompt": "Diagnose why a Python asyncio event loop hangs when mixing synchronous requests with async coroutines: asyncio event loop blocking, synchronous HTTP calls, thread pool executor fix",
+  "variant_type": "SHORT",
+  "intended_requirements": [
+    "asyncio event loop blocking",
+    "synchronous HTTP calls",
+    "thread pool executor fix"
+  ],
+  "intent_preserved": true
+}

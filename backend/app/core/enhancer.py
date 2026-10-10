@@ -24,6 +24,8 @@ class EnhanceResult(tuple):
     validation: Optional[PromptValidation]
     repair_attempted: bool
     quality: Optional[PromptQualityReport]
+    initial_enhanced_prompt: Optional[str]
+    initial_validation: Optional[PromptValidation]
 
     def __new__(
         cls,
@@ -32,6 +34,8 @@ class EnhanceResult(tuple):
         validation: Optional[PromptValidation] = None,
         repair_attempted: bool = False,
         quality: Optional[PromptQualityReport] = None,
+        initial_enhanced_prompt: Optional[str] = None,
+        initial_validation: Optional[PromptValidation] = None,
     ):
         instance = super().__new__(cls, (analysis, enhanced_prompt))
         instance.analysis = analysis
@@ -39,6 +43,8 @@ class EnhanceResult(tuple):
         instance.validation = validation
         instance.repair_attempted = repair_attempted
         instance.quality = quality
+        instance.initial_enhanced_prompt = initial_enhanced_prompt
+        instance.initial_validation = initial_validation
         return instance
 
 
@@ -282,6 +288,9 @@ class PromptEnhancer:
         empty_header_pattern = r"(?m)^\s*(?:\*{1,2}|#{1,4}\s*)?(?:OUTPUT\s+EXPECTATIONS|OUTPUT|CORE\s+REQUIREMENTS|EXPLICIT\s+REQUIREMENTS|PREFERENCES|CONSTRAINTS|UNSPECIFIED\s+DETAILS)(?:\*{1,2})?:?\s*(?=(?:\n+\s*(?:\*{1,2}|#{1,4}\s*)?[A-Z\s&/]+(?:\*{1,2})?:?|\Z))"
         text = re.sub(empty_header_pattern, "", text).strip()
 
+        # Strip any accidental structured tag echoes
+        text = re.sub(r"</?(?:AUTHORITATIVE_USER_REQUEST|ORIGINAL_USER_REQUEST|STRUCTURED_INTENT_ANALYSIS|CATEGORY_TEMPLATE_GUIDANCE|ENHANCEMENT_DIRECTIVE|REPAIR_DIRECTIVE|PREVIOUS_ENHANCED_PROMPT_FAILED_VALIDATION|VALIDATION_ERRORS_TO_FIX)>", "", text).strip()
+
         # Collapse excessive newlines
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
         return text
@@ -393,6 +402,8 @@ class PromptEnhancer:
                     validation=validation,
                     repair_attempted=False,
                     quality=quality_report,
+                    initial_enhanced_prompt=cleaned_enhanced_text,
+                    initial_validation=validation,
                 )
 
             # Validation failed: run AT MOST ONE controlled repair attempt
@@ -439,9 +450,19 @@ class PromptEnhancer:
                 validation=revalidation,
                 repair_attempted=True,
                 quality=quality_report,
+                initial_enhanced_prompt=cleaned_enhanced_text,
+                initial_validation=validation,
             )
 
-        return EnhanceResult(analysis, cleaned_enhanced_text, validation=None, repair_attempted=False)
+        return EnhanceResult(
+            analysis,
+            cleaned_enhanced_text,
+            validation=None,
+            repair_attempted=False,
+            quality=None,
+            initial_enhanced_prompt=cleaned_enhanced_text,
+            initial_validation=None,
+        )
 
 
 prompt_enhancer = PromptEnhancer(validator=prompt_validator, scorer=prompt_scorer)

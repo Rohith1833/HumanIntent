@@ -1,0 +1,13 @@
+{
+  "variant_id": "3feffc23-5c3c-46f3-a2f6-36d5ff602411",
+  "seed_id": "general_001",
+  "prompt": "Here is the generated user prompt:\n\n\"Analyze the societal tradeoffs of remote work on urban planning and commercial real estate, considering both benefits and challenges. Specifically, discuss how:\n\n• Decentralized economies and improved work-life balance for remote workers impact urban city centers and transit systems\n• The shift to remote work affects commercial real estate markets, including office spaces, retail, and residential properties\n• A hybrid equilibrium outlook emerges, balancing the benefits of remote work with the need for urban hubs and community spaces\n\nEnsure your response presents balanced perspectives on the pros and cons of remote work, avoiding prescriptive or biased views. Use clear and concise language to facilitate understanding of the complex interplay between urban planning, commercial real estate, and remote work.",
+  "variant_type": "ALREADY_GOOD",
+  "intended_requirements": [
+    "benefits to workers and decentralized economies",
+    "challenges to urban city centers and transit systems",
+    "future hybrid equilibrium outlook",
+    "objective balanced viewpoints"
+  ],
+  "intent_preserved": true
+}

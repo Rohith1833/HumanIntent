@@ -1,0 +1,95 @@
+{
+  "status": "enhanced",
+  "analysis_dict": {
+    "classification": {
+      "category": "CREATIVE",
+      "confidence": 0.95
+    },
+    "objective": "to prove innocence without revealing the treasure",
+    "explicit_requirements": [
+      "zero-knowledge proof",
+      "proof of innocence"
+    ],
+    "constraints": [
+      "do not use revealing the",
+      "do not use actually telling",
+      "do not use giving away"
+    ],
+    "preferences": [],
+    "missing_context": [
+      "treasure's existence",
+      "treasure's contents"
+    ],
+    "ambiguity": {
+      "score": 40,
+      "level": "MEDIUM",
+      "needs_clarification": false,
+      "reasons": [
+        "treasure's existence and contents are unknown"
+      ],
+      "questions": []
+    },
+    "grounding": {
+      "is_grounded": true,
+      "evidence": [
+        {
+          "field": "constraints",
+          "value": "do not use revealing the",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "do not use revealing the",
+          "relation": "CONSTRAINT"
+        },
+        {
+          "field": "constraints",
+          "value": "do not use actually telling",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "do not use actually telling",
+          "relation": "CONSTRAINT"
+        },
+        {
+          "field": "constraints",
+          "value": "do not use giving away",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "do not use giving away",
+          "relation": "CONSTRAINT"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "zero-knowledge proof",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "zero-knowledge proof",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "proof of innocence",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "proof of innocence",
+          "relation": "MODIFIES_DELIVERABLE"
+        }
+      ],
+      "unsupported_items": []
+    },
+    "deliverable_semantics": {
+      "deliverable_type": null,
+      "intended_outcome": "to prove innocence without revealing the treasure",
+      "is_functionally_complete": true
+    },
+    "intent_anchor": {
+      "action_family": "GENERAL",
+      "primary_action": "general request",
+      "target_or_deliverable": "general response",
+      "confidence": 0.5,
+      "is_strong": false
+    },
+    "raw_category": "CREATIVE"
+  },
+  "enhanced_prompt": "Act as an imaginative writer. Prove innocence without revealing the treasure. \n\nCORE REQUIREMENTS:\n- Zero-knowledge proof\n- Proof of innocence\n\nUNSPECIFIED DETAILS:\n- Treasure's existence\n- Treasure's contents",
+  "is_valid": true,
+  "validation_issues": [],
+  "quality_score": 93.0,
+  "inflation_ratio": 0.52,
+  "repaired": false,
+  "initial_rejected_prompt": null,
+  "initial_rejection_reason": null
+}

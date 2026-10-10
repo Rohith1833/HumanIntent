@@ -1,0 +1,13 @@
+{
+  "variant_id": "b42846a0-8f3a-4ad4-ac5f-05dfad25dc75",
+  "seed_id": "education_001",
+  "prompt": "What lies inside the cave without revealing the treasure?\n\nImagine Ali Baba, a clever thief, seeking to prove to the cave's owner that he didn't steal the treasure without actually telling the owner what he knows. How can Ali Baba demonstrate his innocence without giving away any secrets?\n\nThat's the magic of zero-knowledge proofs!",
+  "variant_type": "AMBIGUOUS",
+  "intended_requirements": [
+    "zero-knowledge proof concept",
+    "Ali Baba cave analogy",
+    "plain accessible language",
+    "high school level"
+  ],
+  "intent_preserved": true
+}

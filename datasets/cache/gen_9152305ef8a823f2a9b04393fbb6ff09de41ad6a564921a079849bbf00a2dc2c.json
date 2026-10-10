@@ -1,0 +1,13 @@
+{
+  "variant_id": "c6707056-c578-4993-b782-5cf351584ecc",
+  "seed_id": "coding_001",
+  "prompt": "Implement a thread-safe token bucket rate limiter in Python using the standard library threading module, without relying on external dependencies, and provide a clear outline of the token bucket algorithm, including the acquire and refill methods.",
+  "variant_type": "CLEAN",
+  "intended_requirements": [
+    "Python",
+    "token bucket algorithm",
+    "thread-safe",
+    "acquire and refill methods"
+  ],
+  "intent_preserved": true
+}

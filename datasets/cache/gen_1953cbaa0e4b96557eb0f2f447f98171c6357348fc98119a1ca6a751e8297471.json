@@ -1,0 +1,13 @@
+{
+  "variant_id": "49812afb-d76b-4ddb-a0dc-3a50207a4d1d",
+  "seed_id": "creative_001",
+  "prompt": "Can you build me a game for my project?",
+  "variant_type": "AMBIGUOUS",
+  "intended_requirements": [
+    "10 distinct theme concepts",
+    "innovative cooperative mechanics",
+    "player synergy hook",
+    "replayability factor"
+  ],
+  "intent_preserved": true
+}

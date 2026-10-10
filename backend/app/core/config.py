@@ -1,6 +1,6 @@
 import json
 from typing import List, Union
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,9 +8,25 @@ class Settings(BaseSettings):
     """Application configuration settings loaded from environment or defaults."""
 
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.2"
+    ollama_model: str = Field(
+        default="llama3",
+        validation_alias=AliasChoices("ollama_model", "OLLAMA_MODEL"),
+        description="Default local Ollama model",
+    )
     ollama_timeout: float = 120.0
     backend_cors_origins: Union[List[str], str] = ["http://localhost:3000"]
+
+    # Phase 8 Persistence settings
+    database_url: str = Field(
+        default="sqlite:///./data/humanintent.db",
+        validation_alias=AliasChoices("humanintent_database_url", "database_url"),
+        description="SQLAlchemy database connection URL",
+    )
+    history_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("history_enabled", "humanintent_history_enabled"),
+        description="Whether to persist prompt enhancement session history locally",
+    )
 
     @field_validator("backend_cors_origins", mode="before")
     @classmethod

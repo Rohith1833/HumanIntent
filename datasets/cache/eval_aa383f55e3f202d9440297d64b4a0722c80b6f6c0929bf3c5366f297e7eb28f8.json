@@ -1,0 +1,54 @@
+{
+  "status": "enhanced",
+  "analysis_dict": {
+    "classification": {
+      "category": "GENERAL",
+      "confidence": 0.85
+    },
+    "objective": "send out an email to the whole company welcoming the new VP of Engineering",
+    "explicit_requirements": [],
+    "constraints": [],
+    "preferences": [],
+    "missing_context": [
+      "specific VP of Engineering's background and achievements",
+      "exact language and tone for the welcome message",
+      "platform or medium for sending the email"
+    ],
+    "ambiguity": {
+      "score": 25,
+      "level": "LOW",
+      "needs_clarification": false,
+      "reasons": [
+        "critical unknowns regarding the welcome message's tone and language",
+        "unresolved platform or medium for sending the email"
+      ],
+      "questions": []
+    },
+    "grounding": {
+      "is_grounded": true,
+      "evidence": [],
+      "unsupported_items": []
+    },
+    "deliverable_semantics": {
+      "deliverable_type": "email",
+      "intended_outcome": "to send out an email to the whole",
+      "is_functionally_complete": true
+    },
+    "intent_anchor": {
+      "action_family": "GENERAL",
+      "primary_action": "general request",
+      "target_or_deliverable": "general response",
+      "confidence": 0.5,
+      "is_strong": false
+    },
+    "raw_category": "GENERAL"
+  },
+  "enhanced_prompt": "OBJECTIVE: Welcome the new VP of Engineering to the company via an email.\n\nUNSPECIFIED DETAILS:\n- Specific VP of Engineering's background and achievements\n- Exact language and tone for the welcome message\n- Platform or medium for sending the email\n\nOUTPUT EXPECTATIONS: Provide a clear email welcoming the new VP of Engineering.\n\nI have removed the invented objective and tone/language, and instead focused on the user's objective of welcoming the new VP of Engineering. I have also removed the assumed ground truth for the welcome message's tone and language, and instead noted the missing details. The prompt is now concise, direct, and free of artificial complexity.",
+  "is_valid": true,
+  "validation_issues": [],
+  "quality_score": 89.0,
+  "inflation_ratio": 0.68,
+  "repaired": true,
+  "initial_rejected_prompt": "OBJECTIVE: Send out an email to the whole company welcoming the new VP of Engineering.\n\nThe welcome message tone and language, the specific VP of Engineering's background and achievements, and the platform or medium for sending the email.\n\nOUTPUT EXPECTATIONS: Provide a clear email welcoming the new VP of Engineering.",
+  "initial_rejection_reason": "Initial draft required repair"
+}

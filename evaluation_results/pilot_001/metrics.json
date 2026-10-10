@@ -1,0 +1,125 @@
+{
+  "run_id": "eval_humanintent",
+  "benchmark_version": "humanintent-benchmark-v1.0",
+  "model": "llama3:latest",
+  "total_cases": 22,
+  "category_accuracy": 0.9524,
+  "task_family_accuracy": 0.9524,
+  "requirement_recall": 0.9551,
+  "constraint_recall": 0.9231,
+  "quantity_preservation": 1.0,
+  "unsupported_requirement_rate": 0.1818,
+  "objective_drift_rate": 0.0,
+  "clarification_precision": 1.0,
+  "clarification_recall": 0.0,
+  "clarification_f1": 0.0,
+  "over_clarification_rate": 0.0,
+  "under_clarification_rate": 1.0,
+  "source_dependency_accuracy": 1.0,
+  "meta_leakage_rate": 0.0455,
+  "already_good_preservation_rate": 1.0,
+  "median_expansion_ratio": 3.42,
+  "p90_expansion_ratio": 5.8,
+  "p95_expansion_ratio": 6.2,
+  "median_latency_ms": 67095.6,
+  "p90_latency_ms": 73934.7,
+  "p95_latency_ms": 76650.5,
+  "avg_llm_calls": 1.95,
+  "win_rate_vs_raw": 1.0,
+  "win_rate_vs_generic": 1.0,
+  "release_gates": [
+    {
+      "gate_name": "Category Accuracy",
+      "target_threshold": ">= 90.0%",
+      "actual_value": 95.24,
+      "status": "PASSED",
+      "description": "Overall accuracy of intent category classification"
+    },
+    {
+      "gate_name": "Task-Family Accuracy",
+      "target_threshold": ">= 95.0%",
+      "actual_value": 95.24,
+      "status": "PASSED",
+      "description": "Intent anchor action family consistency"
+    },
+    {
+      "gate_name": "Explicit Requirement Recall",
+      "target_threshold": ">= 95.0%",
+      "actual_value": 95.51,
+      "status": "PASSED",
+      "description": "Preservation rate of explicit user requirements"
+    },
+    {
+      "gate_name": "Constraint Recall",
+      "target_threshold": ">= 95.0%",
+      "actual_value": 92.31,
+      "status": "FAILED",
+      "description": "Preservation of negative and restrictive constraints"
+    },
+    {
+      "gate_name": "Quantity Preservation",
+      "target_threshold": ">= 97.0%",
+      "actual_value": 100.0,
+      "status": "PASSED",
+      "description": "Preservation of explicit numerical limits and item counts"
+    },
+    {
+      "gate_name": "Unsupported Requirement Rate",
+      "target_threshold": "<= 3.0%",
+      "actual_value": 18.18,
+      "status": "FAILED",
+      "description": "Rate of introducing unrequested features or hallucinations"
+    },
+    {
+      "gate_name": "Objective Drift Rate",
+      "target_threshold": "<= 2.0%",
+      "actual_value": 0.0,
+      "status": "PASSED",
+      "description": "Rate of materially changing the requested user task"
+    },
+    {
+      "gate_name": "Clarification F1",
+      "target_threshold": ">= 90.0%",
+      "actual_value": 0.0,
+      "status": "FAILED",
+      "description": "Harmonic mean of clarification precision and recall"
+    },
+    {
+      "gate_name": "Over-Clarification Rate",
+      "target_threshold": "<= 5.0%",
+      "actual_value": 0.0,
+      "status": "PASSED",
+      "description": "Clear prompts incorrectly blocked for clarification"
+    },
+    {
+      "gate_name": "Meta / Instruction Leakage",
+      "target_threshold": "== 0.0%",
+      "actual_value": 4.55,
+      "status": "FAILED",
+      "description": "Presence of internal system control wording in enhanced output"
+    }
+  ],
+  "failure_counts": {
+    "MISSING_REQUIREMENT": 3,
+    "META_LEAKAGE": 1,
+    "INVENTED_REQUIREMENT": 4,
+    "MISSING_CONSTRAINT": 1,
+    "UNDER_CLARIFICATION": 1,
+    "TASK_FAMILY_ERROR": 1,
+    "CATEGORY_ERROR": 1
+  },
+  "confidence_intervals": {
+    "category_accuracy": {
+      "mean": 0.9091,
+      "ci_lower": 0.7727,
+      "ci_upper": 1.0,
+      "confidence_level": 0.95
+    },
+    "unsupported_requirement_rate": {
+      "mean": 0.0,
+      "ci_lower": 0.0,
+      "ci_upper": 0.0,
+      "confidence_level": 0.95
+    }
+  }
+}

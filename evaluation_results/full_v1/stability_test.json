@@ -1,0 +1,46 @@
+{
+  "total_cases_evaluated": 2,
+  "repetitions_per_case": 2,
+  "category_stability_rate": 1.0,
+  "clarification_stability_rate": 1.0,
+  "mean_quality_score_std": 0.0,
+  "max_quality_score_std": 0.0,
+  "case_stability_details": [
+    {
+      "case_id": "cod_001",
+      "category_stable": true,
+      "categories": [
+        "CODING",
+        "CODING"
+      ],
+      "clarification_stable": true,
+      "clarification_decisions": [
+        false,
+        false
+      ],
+      "quality_scores": [
+        100.0,
+        100.0
+      ],
+      "quality_std": 0.0
+    },
+    {
+      "case_id": "cod_002",
+      "category_stable": true,
+      "categories": [
+        "CODING",
+        "CODING"
+      ],
+      "clarification_stable": true,
+      "clarification_decisions": [
+        false,
+        false
+      ],
+      "quality_scores": [
+        100.0,
+        100.0
+      ],
+      "quality_std": 0.0
+    }
+  ]
+}

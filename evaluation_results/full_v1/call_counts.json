@@ -1,0 +1,10 @@
+{
+  "avg_llm_calls": 4.43,
+  "median_calls": 4.0,
+  "p90_calls": 6.0,
+  "p95_calls": 6.0,
+  "clear_enhanced_avg_calls": 4.69,
+  "needs_clarification_avg_calls": 0.0,
+  "analysis_repair_cases": 26,
+  "enhancement_repair_cases": 61
+}

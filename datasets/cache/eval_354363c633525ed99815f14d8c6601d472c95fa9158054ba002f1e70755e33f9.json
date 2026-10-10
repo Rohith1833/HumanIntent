@@ -1,0 +1,97 @@
+{
+  "status": "enhanced",
+  "analysis_dict": {
+    "classification": {
+      "category": "IMAGE_GENERATION",
+      "confidence": 0.95
+    },
+    "objective": "Create a serene and inviting image of a cozy bookstore cafe on a rainy afternoon.",
+    "explicit_requirements": [
+      "rainy afternoon",
+      "warm amber lighting",
+      "steaming coffee cup",
+      "wooden table",
+      "large glass window",
+      "depth of field"
+    ],
+    "constraints": [],
+    "preferences": [],
+    "missing_context": [],
+    "ambiguity": {
+      "score": 0,
+      "level": "LOW",
+      "needs_clarification": false,
+      "reasons": [],
+      "questions": []
+    },
+    "grounding": {
+      "is_grounded": true,
+      "evidence": [
+        {
+          "field": "explicit_requirements",
+          "value": "rainy afternoon",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "rainy afternoon",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "warm amber lighting",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "warm amber lighting",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "steaming coffee cup",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "steaming coffee cup",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "wooden table",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "wooden table",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "large glass window",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "large glass window",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "depth of field",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "depth of field",
+          "relation": "MODIFIES_DELIVERABLE"
+        }
+      ],
+      "unsupported_items": []
+    },
+    "deliverable_semantics": {
+      "deliverable_type": null,
+      "intended_outcome": "Create a serene and inviting image of a cozy bookstore cafe on a rainy afternoon.",
+      "is_functionally_complete": true
+    },
+    "intent_anchor": {
+      "action_family": "GENERAL",
+      "primary_action": "general request",
+      "target_or_deliverable": "general response",
+      "confidence": 0.5,
+      "is_strong": false
+    },
+    "raw_category": "IMAGE_GENERATION"
+  },
+  "enhanced_prompt": "Act as a visual art director. Create a serene and inviting image of a cozy bookstore cafe on a rainy afternoon.\n\nCORE / EXPLICIT REQUIREMENTS:\n\n* Rainy afternoon\n* Warm amber lighting\n* Steaming coffee cup\n* Wooden table\n* Large glass window\n* Depth of field",
+  "is_valid": true,
+  "validation_issues": [],
+  "quality_score": 97.0,
+  "inflation_ratio": 1.96,
+  "repaired": false,
+  "initial_rejected_prompt": null,
+  "initial_rejection_reason": null
+}

@@ -1,0 +1,13 @@
+{
+  "variant_id": "47ec5f08-8ded-403c-9755-d16239938d08",
+  "seed_id": "image_001",
+  "prompt": "Can you build me a lighting for my project?",
+  "variant_type": "AMBIGUOUS",
+  "intended_requirements": [
+    "bookstore interior with steaming coffee cup",
+    "rain streaks on large glass window",
+    "warm amber ambient lighting",
+    "depth of field"
+  ],
+  "intent_preserved": true
+}

@@ -1,0 +1,13 @@
+{
+  "variant_id": "71cee45b-2c19-46b7-be33-85b00ab9e05a",
+  "seed_id": "summarization_001",
+  "prompt": "Here is the generated prompt:\n\n\"Summarize a research paper on perovskite solar cell efficiency, highlighting key milestones, bottlenecks, and commercial implications. Provide three concise bulleted takeaways: • ? • ? • ?\"\n\nThis prompt intentionally leaves out critical functional details, requiring the AI to clarify and extract the necessary information to provide a meaningful summary.",
+  "variant_type": "AMBIGUOUS",
+  "intended_requirements": [
+    "extract key efficiency milestone",
+    "identify primary degradation bottleneck",
+    "summarize commercial viability implications",
+    "exactly three concise bullets"
+  ],
+  "intent_preserved": true
+}

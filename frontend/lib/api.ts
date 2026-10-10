@@ -154,6 +154,7 @@ export interface PromptQualityReport {
 
 export interface EnhancedResponse {
   status: "enhanced";
+  session_id: string;
   original_prompt: string;
   analysis: PromptAnalysis;
   enhanced_prompt: string;
@@ -161,31 +162,38 @@ export interface EnhancedResponse {
   template?: string;
   validation?: PromptValidation;
   quality?: PromptQualityReport;
+  history_saved?: boolean;
 }
 
 export interface ClarificationRequiredResponse {
   status: "needs_clarification";
+  session_id: string;
   original_prompt: string;
   analysis: PromptAnalysis;
   questions: ClarificationQuestion[];
   model: string;
+  history_saved?: boolean;
 }
 
 export interface ValidationFailedResponse {
   status: "validation_failed";
+  session_id: string;
   original_prompt: string;
   analysis: PromptAnalysis;
   validation: PromptValidation;
   message: string;
   model: string;
+  history_saved?: boolean;
 }
 
 export interface AnalysisFailedResponse {
   status: "analysis_failed";
+  session_id: string;
   original_prompt: string;
   analysis: PromptAnalysis;
   message: string;
   model: string;
+  history_saved?: boolean;
 }
 
 export type EnhanceResponse =
@@ -195,8 +203,82 @@ export type EnhanceResponse =
   | AnalysisFailedResponse;
 
 export interface EnhanceOptions {
+  session_id?: string;
   clarification_answers?: ClarificationAnswer[];
   allow_reasonable_assumptions?: boolean;
+}
+
+export interface HistorySummaryItem {
+  session_id: string;
+  created_at: string;
+  updated_at: string;
+  original_prompt_preview: string;
+  status: string;
+  category?: string | null;
+  quality_score?: number | null;
+}
+
+export interface HistoryListResponse {
+  items: HistorySummaryItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ClarificationRoundDetail {
+  round_number: number;
+  created_at: string;
+  questions?: ClarificationQuestion[] | null;
+  answers?: ClarificationAnswer[] | null;
+  allow_reasonable_assumptions: boolean;
+}
+
+export interface HistoryDetailResponse {
+  session_id: string;
+  created_at: string;
+  updated_at: string;
+  original_prompt: string;
+  status: string;
+  mode?: string | null;
+  model?: string | null;
+  allow_reasonable_assumptions: boolean;
+  category?: string | null;
+  template?: string | null;
+  clarification_rounds: ClarificationRoundDetail[];
+  latest_analysis?: PromptAnalysis | null;
+  final_enhanced_prompt?: string | null;
+  validation?: PromptValidation | null;
+  quality?: PromptQualityReport | null;
+  feedback?: FeedbackResponse | null;
+  history_saved: boolean;
+  dataset_consent: boolean;
+}
+
+export type FeedbackRating = "HELPFUL" | "NOT_HELPFUL";
+
+export interface FeedbackRequest {
+  session_id: string;
+  rating: FeedbackRating;
+  reason?: string | null;
+  edited_prompt?: string | null;
+  dataset_consent?: boolean;
+}
+
+export interface FeedbackResponse {
+  id: string;
+  session_id: string;
+  rating: FeedbackRating;
+  reason?: string | null;
+  edited_prompt?: string | null;
+  dataset_consent: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeleteResponse {
+  status: string;
+  session_id?: string | null;
+  deleted_count?: number | null;
 }
 
 export interface ModelsResponse {
@@ -322,6 +404,7 @@ export async function enhancePrompt(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         prompt: trimmed,
+        session_id: options?.session_id,
         clarification_answers: options?.clarification_answers,
         allow_reasonable_assumptions: options?.allow_reasonable_assumptions ?? false,
       }),
@@ -379,6 +462,104 @@ export async function enhancePrompt(
     }
 
     throw new ApiError(sanitized || `Enhancement failed with status ${res.status}.`, res.status);
+  }
+
+  return await res.json();
+}
+
+/**
+ * Retrieve paginated lightweight history summaries. Zero LLM calls.
+ */
+export async function getHistory(limit: number = 20, offset: number = 0): Promise<HistoryListResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}/api/history?limit=${limit}&offset=${offset}`);
+  } catch {
+    throw new ApiError(`Cannot connect to HumanIntent backend at ${API_BASE_URL}.`);
+  }
+
+  if (!res.ok) {
+    throw new ApiError(`Failed to fetch history (status ${res.status}).`, res.status);
+  }
+
+  return await res.json();
+}
+
+/**
+ * Reconstruct complete historical enhancement result. Zero LLM calls.
+ */
+export async function getHistoryDetail(sessionId: string): Promise<HistoryDetailResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}/api/history/${sessionId}`);
+  } catch {
+    throw new ApiError(`Cannot connect to HumanIntent backend at ${API_BASE_URL}.`);
+  }
+
+  if (!res.ok) {
+    throw new ApiError(`Failed to fetch history detail for session ${sessionId}.`, res.status);
+  }
+
+  return await res.json();
+}
+
+/**
+ * Delete a single historical session and its associated snapshots.
+ */
+export async function deleteHistoryItem(sessionId: string): Promise<DeleteResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}/api/history/${sessionId}`, {
+      method: "DELETE",
+    });
+  } catch {
+    throw new ApiError(`Cannot connect to HumanIntent backend at ${API_BASE_URL}.`);
+  }
+
+  if (!res.ok) {
+    throw new ApiError(`Failed to delete session ${sessionId}.`, res.status);
+  }
+
+  return await res.json();
+}
+
+/**
+ * Clear all local history sessions.
+ */
+export async function clearHistory(): Promise<DeleteResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}/api/history`, {
+      method: "DELETE",
+    });
+  } catch {
+    throw new ApiError(`Cannot connect to HumanIntent backend at ${API_BASE_URL}.`);
+  }
+
+  if (!res.ok) {
+    throw new ApiError(`Failed to clear history.`, res.status);
+  }
+
+  return await res.json();
+}
+
+/**
+ * Submit or update user feedback for an enhancement session.
+ */
+export async function submitFeedback(payload: FeedbackRequest): Promise<FeedbackResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}/api/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new ApiError(`Cannot connect to HumanIntent backend at ${API_BASE_URL}.`);
+  }
+
+  if (!res.ok) {
+    throw new ApiError(`Failed to submit feedback.`, res.status);
   }
 
   return await res.json();

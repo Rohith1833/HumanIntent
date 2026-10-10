@@ -1,0 +1,109 @@
+{
+  "status": "enhanced",
+  "analysis_dict": {
+    "classification": {
+      "category": "RESEARCH",
+      "confidence": 0.95
+    },
+    "objective": "Summarize a research paper on perovskite solar cell efficiency, highlighting key milestones, bottlenecks, and commercial implications. Provide three concise bulleted takeaways:",
+    "explicit_requirements": [
+      "Summarize a research paper",
+      "Highlight key milestones",
+      "Highlight bottlenecks",
+      "Highlight commercial implications",
+      "Provide three concise bulleted takeaways",
+      "3 concise bulleted takeaways"
+    ],
+    "constraints": [],
+    "preferences": [
+      "concise style"
+    ],
+    "missing_context": [],
+    "ambiguity": {
+      "score": 25,
+      "level": "LOW",
+      "needs_clarification": false,
+      "reasons": [
+        "Unclear which specific research paper to summarize",
+        "Missing details on what milestones, bottlenecks, and commercial implications to highlight"
+      ],
+      "questions": []
+    },
+    "grounding": {
+      "is_grounded": true,
+      "evidence": [
+        {
+          "field": "preferences",
+          "value": "concise style",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "concise",
+          "relation": "MODIFIES_OUTPUT_STYLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "Summarize a research paper",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Summarize a research paper",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "Highlight key milestones",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Highlight key milestones",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "Highlight bottlenecks",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Highlight bottlenecks",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "Highlight commercial implications",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Highlight commercial implications",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "Provide three concise bulleted takeaways",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Provide three concise bulleted takeaways",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "3 concise bulleted takeaways",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "3 concise bulleted takeaways",
+          "relation": "MODIFIES_DELIVERABLE"
+        }
+      ],
+      "unsupported_items": []
+    },
+    "deliverable_semantics": {
+      "deliverable_type": null,
+      "intended_outcome": "summarize",
+      "is_functionally_complete": true
+    },
+    "intent_anchor": {
+      "action_family": "RESEARCH",
+      "primary_action": "investigate and synthesize research evidence",
+      "target_or_deliverable": "research synthesis",
+      "confidence": 0.95,
+      "is_strong": true
+    },
+    "raw_category": "RESEARCH"
+  },
+  "enhanced_prompt": "Act as a researcher and summarize a research paper on perovskite solar cell efficiency, highlighting key milestones, bottlenecks, and commercial implications.\n\n• \n\n• \n\n• \n\nConcise style",
+  "is_valid": true,
+  "validation_issues": [],
+  "quality_score": 81.0,
+  "inflation_ratio": 0.47,
+  "repaired": true,
+  "initial_rejected_prompt": "Act as a researcher and summarize a research paper on perovskite solar cell efficiency, highlighting key milestones, bottlenecks, and commercial implications. Provide three concise bulleted takeaways:\n\n* Summarize a research paper\n* Highlight key milestones\n* Highlight bottlenecks\n* Highlight commercial implications\n* Provide three concise bulleted takeaways\n\n* Concise style\n\n* Unclear which specific research paper to summarize\n* Missing details on what milestones, bottlenecks, and commercial implications to highlight\n\n* Provide a summary of the research paper on perovskite solar cell efficiency\n* Highlight key milestones, bottlenecks, and commercial implications\n* Provide three concise bulleted takeaways",
+  "initial_rejection_reason": "Initial draft required repair"
+}

@@ -1,0 +1,13 @@
+{
+  "variant_id": "2692525b-38d2-4d46-92ff-ca5681d2ec30",
+  "seed_id": "writing_001",
+  "prompt": "So I've been thinking about this... basically I want to draft a formal company-wide announcement email introducing the new vice president of engineering. Not really sure about the best way but it definitely has to include professional executive tone, welcome message, background summary, call to welcome. Oh and also under 250 words, warm but corporate, let me know what you think!",
+  "variant_type": "MESSY",
+  "intended_requirements": [
+    "professional executive tone",
+    "welcome message",
+    "background summary",
+    "call to welcome"
+  ],
+  "intent_preserved": true
+}

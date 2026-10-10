@@ -1,0 +1,13 @@
+{
+  "variant_id": "e5a2aca2-510c-4eb0-abc5-bf63d6d4028d",
+  "seed_id": "data_analysis_001",
+  "prompt": "Calculate median latency p95 p99 and std dev from API response times",
+  "variant_type": "SHORT",
+  "intended_requirements": [
+    "statistical calculations",
+    "median and percentiles",
+    "standard deviation",
+    "outlier identification"
+  ],
+  "intent_preserved": true
+}

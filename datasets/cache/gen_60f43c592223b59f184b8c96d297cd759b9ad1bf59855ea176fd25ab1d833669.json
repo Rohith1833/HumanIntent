@@ -1,0 +1,13 @@
+{
+  "variant_id": "5e23129b-3ce4-41d7-846a-999dede696f7",
+  "seed_id": "research_001",
+  "prompt": "Please Investigate and compare the empirical throughput tradeoffs between B-tree and LSM-tree storage engines under write-heavy workloads. Core requirements: B-tree vs LSM-tree architecture, write amplification factors, read latency tradeoffs, workload suitability. Ensure cite typical benchmarks (e.g. RocksDB).",
+  "variant_type": "CLEAN",
+  "intended_requirements": [
+    "B-tree vs LSM-tree architecture",
+    "write amplification factors",
+    "read latency tradeoffs",
+    "workload suitability"
+  ],
+  "intent_preserved": true
+}

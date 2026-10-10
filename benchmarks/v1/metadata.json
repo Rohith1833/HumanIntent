@@ -1,0 +1,42 @@
+{
+  "version": "humanintent-benchmark-v1.0",
+  "frozen_at": "2026-10-08T16:15:21.901375+00:00",
+  "sha256": "17ddbd8f36ad3754d073ceb7bff89005b13f230f14805ed1342bed78f8feae66",
+  "total_cases": 220,
+  "category_distribution": {
+    "CODING": 20,
+    "DEBUGGING": 20,
+    "WRITING": 20,
+    "EDUCATION": 20,
+    "RESEARCH": 20,
+    "PLANNING": 20,
+    "DATA_ANALYSIS": 20,
+    "CREATIVE": 20,
+    "IMAGE_GENERATION": 20,
+    "SUMMARIZATION": 20,
+    "GENERAL": 20
+  },
+  "difficulty_distribution": {
+    "EASY": 74,
+    "MEDIUM": 89,
+    "HARD": 57
+  },
+  "tags_summary": {
+    "coding": 20,
+    "easy": 74,
+    "medium": 89,
+    "hard": 57,
+    "ambiguous": 13,
+    "debugging": 20,
+    "writing": 20,
+    "education": 20,
+    "research": 20,
+    "planning": 20,
+    "data_analysis": 20,
+    "creative": 20,
+    "image_generation": 20,
+    "summarization": 20,
+    "source_dependent": 3,
+    "general": 20
+  }
+}

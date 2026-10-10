@@ -1,0 +1,13 @@
+{
+  "variant_id": "a8b94221-ceda-41b4-9d84-9d0f55918407",
+  "seed_id": "research_001",
+  "prompt": "Here is a realistic user prompt reflecting the requested style:\n\n\"Develop a comprehensive analysis comparing the empirical throughput tradeoffs between B-tree and LSM-tree storage engines under write-heavy workloads. In your investigation, do NOT use RocksDB as a benchmark. Instead, explore the architectural differences between the two storage engines and quantify the impact of write amplification factors on read latency. Your analysis should provide insights on the suitability of each storage engine for different workloads, including a clear explanation of how B-tree and LSM-tree architectures address write-heavy scenarios and the tradeoffs involved. Finally, provide specific quantitative metrics for the throughput, write amplification, and read latency of each storage engine under various write-heavy workloads.",
+  "variant_type": "CONSTRAINED",
+  "intended_requirements": [
+    "B-tree vs LSM-tree architecture",
+    "write amplification factors",
+    "read latency tradeoffs",
+    "workload suitability"
+  ],
+  "intent_preserved": true
+}

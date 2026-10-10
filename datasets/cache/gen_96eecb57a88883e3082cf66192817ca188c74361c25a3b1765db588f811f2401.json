@@ -1,0 +1,13 @@
+{
+  "variant_id": "f1b01c30-01f2-49ed-9bb4-ba9ce02ea2a5",
+  "seed_id": "data_analysis_001",
+  "prompt": "Calculate the median latency, p95, p99, and standard deviation from a provided sample of API response times: statistical calculations, median and percentiles, standard deviation, outlier identification",
+  "variant_type": "SHORT",
+  "intended_requirements": [
+    "statistical calculations",
+    "median and percentiles",
+    "standard deviation",
+    "outlier identification"
+  ],
+  "intent_preserved": true
+}

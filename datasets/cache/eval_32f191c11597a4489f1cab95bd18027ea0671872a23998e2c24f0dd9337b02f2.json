@@ -1,0 +1,121 @@
+{
+  "status": "enhanced",
+  "analysis_dict": {
+    "classification": {
+      "category": "DEBUGGING",
+      "confidence": 0.95
+    },
+    "objective": "Create a phased roadmap for onboarding a new junior backend engineer, including a local dev environment setup, small projects, and self-assessment goals.",
+    "explicit_requirements": [
+      "Week 1: Set up a local dev environment and submit the first PR (pull request)",
+      "Pair with a mentor and assign easy tasks for the engineer's first week",
+      "Week 2-3: Start working on small projects, including a simple feature or bug fix",
+      "Week 4-5: Introduce the engineer to the rest of the team and assign more challenging tasks",
+      "Week 6-30: Work on bigger projects and provide feedback and guidance"
+    ],
+    "constraints": [
+      "Manageable workload to avoid burnout",
+      "30-day duration"
+    ],
+    "preferences": [
+      "Self-assessment goals for each week, such as learning a new skill or improving code quality"
+    ],
+    "missing_context": [
+      "Specific requirements for the engineer's skills and knowledge",
+      "Timeline for the engineer's onboarding process",
+      "Resources and tools needed for the engineer's projects"
+    ],
+    "ambiguity": {
+      "score": 20,
+      "level": "LOW",
+      "needs_clarification": false,
+      "reasons": [
+        "Lack of specific requirements for the engineer's skills and knowledge"
+      ],
+      "questions": []
+    },
+    "grounding": {
+      "is_grounded": true,
+      "evidence": [
+        {
+          "field": "preferences",
+          "value": "Self-assessment goals for each week, such as learning a new skill or improving code quality",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "self",
+          "relation": "MODIFIES_OUTPUT_STYLE"
+        },
+        {
+          "field": "constraints",
+          "value": "Manageable workload to avoid burnout",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Manageable workload to avoid burnout",
+          "relation": "CONSTRAINT"
+        },
+        {
+          "field": "constraints",
+          "value": "30-day duration",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "30-day duration",
+          "relation": "CONSTRAINT"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "Week 1: Set up a local dev environment and submit the first PR (pull request)",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Week 1: Set up a local dev environment and submit the first PR (pull request)",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "Pair with a mentor and assign easy tasks for the engineer's first week",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Pair with a mentor and assign easy tasks for the engineer's first week",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "Week 2-3: Start working on small projects, including a simple feature or bug fix",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Week 2-3: Start working on small projects, including a simple feature or bug fix",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "Week 4-5: Introduce the engineer to the rest of the team and assign more challenging tasks",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Week 4-5: Introduce the engineer to the rest of the team and assign more challenging tasks",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "Week 6-30: Work on bigger projects and provide feedback and guidance",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Week 6-30: Work on bigger projects and provide feedback and guidance",
+          "relation": "MODIFIES_DELIVERABLE"
+        }
+      ],
+      "unsupported_items": []
+    },
+    "deliverable_semantics": {
+      "deliverable_type": null,
+      "intended_outcome": "fix",
+      "is_functionally_complete": true
+    },
+    "intent_anchor": {
+      "action_family": "SOFTWARE_DEBUGGING",
+      "primary_action": "fix or diagnose broken software",
+      "target_or_deliverable": "code fix or diagnosis",
+      "confidence": 0.95,
+      "is_strong": true
+    },
+    "raw_category": "PLANNING"
+  },
+  "enhanced_prompt": "Act as an expert software debugger and troubleshooter. Create a phased roadmap for onboarding a new junior backend engineer, including a local dev environment setup, small projects, and self-assessment goals, within a 30-day duration.\n\nCORE/EXPLICIT REQUIREMENTS:\n\n* Week 1: Set up a local dev environment and submit the first PR (pull request)\n* Pair with a mentor and assign easy tasks for the engineer's first week\n* Week 2-3: Start working on small projects, including a simple feature or bug fix\n* Week 4-5: Introduce the engineer to the rest of the team and assign more challenging tasks\n* Week 6-30: Work on bigger projects and provide feedback and guidance\n\nSELF-ASSESSMENT GOALS:\n\n* Week 1: Learn a new skill or improve code quality\n* Week 2: Continue learning and improving code quality\n* Week 3: Focus on self-assessment and goal setting\n* ...\n\nPREFERENCES\n- Self-assessment goals for each week, such as learning a new skill or improving code quality\n\nThe user has not specified:\n- Specific requirements for the engineer's skills and knowledge\n- Timeline for the engineer's onboarding process\n- Resources and tools needed for the engineer's projects\n\nDo not assume these details without confirmation. Ask for clarification if needed.\n\n* A clear and structured roadmap for onboarding the new junior backend engineer\n* A list of specific tasks and goals for each week of the onboarding process\n* A focus on setting the engineer up for success and providing feedback and guidance throughout the process",
+  "is_valid": true,
+  "validation_issues": [],
+  "quality_score": 95.0,
+  "inflation_ratio": 1.29,
+  "repaired": true,
+  "initial_rejected_prompt": "Act as an experienced software debugger and troubleshooter. Create a phased roadmap for onboarding a new junior backend engineer, including a local dev environment setup, small projects, and self-assessment goals, within a 30-day duration.\n\nCORE/EXPLICIT REQUIREMENTS:\n\n* Week 1: Set up a local dev environment and submit the first PR (pull request)\n* Pair with a mentor and assign easy tasks for the engineer's first week\n* Week 2-3: Start working on small projects, including a simple feature or bug fix\n* Week 4-5: Introduce the engineer to the rest of the team and assign more challenging tasks\n* Week 6-30: Work on bigger projects and provide feedback and guidance\n\n* Self-assessment goals for each week, such as learning a new skill or improving code quality\n\n* Specific requirements for the engineer's skills and knowledge\n* Timeline for the engineer's onboarding process\n* Resources and tools needed for the engineer's projects",
+  "initial_rejection_reason": "Initial draft required repair"
+}

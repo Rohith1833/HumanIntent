@@ -1,0 +1,89 @@
+{
+  "status": "analysis_failed",
+  "analysis_dict": {
+    "classification": {
+      "category": "EDUCATION",
+      "confidence": 0.95
+    },
+    "objective": "Explain the concept of zero-knowledge proofs using an analogy",
+    "explicit_requirements": [],
+    "constraints": [
+      "do not use actually showing",
+      "do not use revealing what",
+      "do not use giving away",
+      "do not use revealing any",
+      "do not use actually saying"
+    ],
+    "preferences": [],
+    "missing_context": [
+      "target_audience"
+    ],
+    "ambiguity": {
+      "score": 30,
+      "level": "MEDIUM",
+      "needs_clarification": false,
+      "reasons": [
+        "unclear primary objective",
+        "missing information that fundamentally determines architecture or direction"
+      ],
+      "questions": []
+    },
+    "grounding": {
+      "is_grounded": false,
+      "evidence": [
+        {
+          "field": "constraints",
+          "value": "do not use actually showing",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "do not use actually showing",
+          "relation": "CONSTRAINT"
+        },
+        {
+          "field": "constraints",
+          "value": "do not use revealing what",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "do not use revealing what",
+          "relation": "CONSTRAINT"
+        },
+        {
+          "field": "constraints",
+          "value": "do not use giving away",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "do not use giving away",
+          "relation": "CONSTRAINT"
+        },
+        {
+          "field": "constraints",
+          "value": "do not use revealing any",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "do not use revealing any",
+          "relation": "CONSTRAINT"
+        }
+      ],
+      "unsupported_items": [
+        "unsupported constraint: 'do not use actually saying'"
+      ]
+    },
+    "deliverable_semantics": {
+      "deliverable_type": null,
+      "intended_outcome": "Explain the concept of zero-knowledge proofs using an analogy",
+      "is_functionally_complete": true
+    },
+    "intent_anchor": {
+      "action_family": "GENERAL",
+      "primary_action": "general request",
+      "target_or_deliverable": "general response",
+      "confidence": 0.5,
+      "is_strong": false
+    },
+    "raw_category": "EDUCATION"
+  },
+  "enhanced_prompt": "",
+  "is_valid": false,
+  "validation_issues": [],
+  "quality_score": 0.0,
+  "inflation_ratio": null,
+  "repaired": false,
+  "initial_rejected_prompt": null,
+  "initial_rejection_reason": null
+}

@@ -1,0 +1,13 @@
+{
+  "variant_id": "29fdbd49-606b-46be-abd1-52a318beaf9e",
+  "seed_id": "data_analysis_001",
+  "prompt": "Can you build me a times for my project?",
+  "variant_type": "AMBIGUOUS",
+  "intended_requirements": [
+    "statistical calculations",
+    "median and percentiles",
+    "standard deviation",
+    "outlier identification"
+  ],
+  "intent_preserved": true
+}

@@ -1,0 +1,13 @@
+{
+  "variant_id": "d2441bcb-f974-428e-8b09-8d9b37ce0778",
+  "seed_id": "coding_001",
+  "prompt": "Please Implement a thread-safe token bucket rate limiter in Python. Core requirements: Python, token bucket algorithm, thread-safe, acquire and refill methods. Ensure avoid external dependencies, standard library threading only.",
+  "variant_type": "CLEAN",
+  "intended_requirements": [
+    "Python",
+    "token bucket algorithm",
+    "thread-safe",
+    "acquire and refill methods"
+  ],
+  "intent_preserved": true
+}

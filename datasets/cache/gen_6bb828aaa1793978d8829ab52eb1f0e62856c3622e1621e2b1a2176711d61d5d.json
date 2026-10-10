@@ -1,0 +1,13 @@
+{
+  "variant_id": "af1de6e2-0d68-41ef-9f8d-fba0fb5640f5",
+  "seed_id": "general_001",
+  "prompt": "Provide balanced perspectives on the societal tradeoffs of remote work on urban planning and commercial real estate: benefits to workers and decentralized economies, challenges to urban city centers and transit systems, future hybrid equilibrium outlook, objective balanced viewpoints",
+  "variant_type": "SHORT",
+  "intended_requirements": [
+    "benefits to workers and decentralized economies",
+    "challenges to urban city centers and transit systems",
+    "future hybrid equilibrium outlook",
+    "objective balanced viewpoints"
+  ],
+  "intent_preserved": true
+}

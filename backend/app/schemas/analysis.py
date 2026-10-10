@@ -19,6 +19,49 @@ class PromptCategory(str, Enum):
     GENERAL = "GENERAL"
 
 
+class ActionFamily(str, Enum):
+    """Canonical action families defining what the user is asking the AI to do."""
+
+    SOFTWARE_CREATION = "SOFTWARE_CREATION"
+    SOFTWARE_DEBUGGING = "SOFTWARE_DEBUGGING"
+    WRITING = "WRITING"
+    EDUCATION_EXPLANATION = "EDUCATION_EXPLANATION"
+    RESEARCH = "RESEARCH"
+    PLANNING = "PLANNING"
+    DATA_ANALYSIS = "DATA_ANALYSIS"
+    CREATIVE_IDEATION = "CREATIVE_IDEATION"
+    IMAGE_CREATION = "IMAGE_CREATION"
+    SUMMARIZATION = "SUMMARIZATION"
+    GENERAL = "GENERAL"
+
+
+class IntentAnchor(BaseModel):
+    """Lightweight internal representation of the primary requested user action."""
+
+    action_family: ActionFamily = Field(
+        ...,
+        description="The primary action family inferred from what the user is asking the AI to do.",
+    )
+    primary_action: str = Field(
+        ...,
+        description="The canonical action verb or phrase (e.g., 'create function', 'draft message').",
+    )
+    target_or_deliverable: str = Field(
+        ...,
+        description="The primary target or deliverable container.",
+    )
+    confidence: float = Field(
+        default=0.9,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score for the action anchor.",
+    )
+    is_strong: bool = Field(
+        default=True,
+        description="Whether the requested operation unambiguously indicates this task family.",
+    )
+
+
 class PromptClassification(BaseModel):
     """Model-estimated task category and classification confidence."""
 
@@ -336,6 +379,14 @@ class PromptAnalysis(BaseModel):
     deliverable_semantics: DeliverableSemantics = Field(
         default_factory=DeliverableSemantics,
         description="Semantic breakdown of deliverable identity vs functional purpose.",
+    )
+    intent_anchor: Optional[IntentAnchor] = Field(
+        default=None,
+        description="Internal consistency anchor tracking the primary action family.",
+    )
+    raw_category: Optional[str] = Field(
+        default=None,
+        description="Raw model classification before consistency gates.",
     )
 
     @model_validator(mode="before")

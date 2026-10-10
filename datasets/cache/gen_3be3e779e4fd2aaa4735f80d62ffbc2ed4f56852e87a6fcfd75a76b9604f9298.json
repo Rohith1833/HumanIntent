@@ -1,0 +1,13 @@
+{
+  "variant_id": "710521f2-5dff-468c-951f-d846ede6b28f",
+  "seed_id": "writing_001",
+  "prompt": "Here's a messy prompt for you:\n\n\"okay so like, we're supposed to send out an email to the whole company about the new VP of Engineering guy, right? and i'm like, oh man, i don't wanna mess this up, but also i don't wanna make it sound too boring or corporate-y, you know? so like, here's the deal - we're super excited to welcome this new VP, his name is [Name] and he's been doing some amazing stuff at his old job, apparently. anyway, the point is, he's really smart and stuff, and we're stoked to have him on board. i mean, he's got like, a whole bunch of experience and achievements and all that jazz, and we're just, like, super grateful to have him leading our eng team, you know? so yeah, that's it, i guess. just a big ol' welcome message, really. call to action: just, like, go meet him, i guess. or something. yeah.",
+  "variant_type": "MESSY",
+  "intended_requirements": [
+    "professional executive tone",
+    "welcome message",
+    "background summary",
+    "call to welcome"
+  ],
+  "intent_preserved": true
+}

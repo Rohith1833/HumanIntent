@@ -1,0 +1,13 @@
+{
+  "variant_id": "7ca19397-0f9a-439b-ac49-970082766207",
+  "seed_id": "creative_001",
+  "prompt": "Please Brainstorm ten innovative theme concepts and gameplay mechanics for a cooperative tabletop deck-building game. Core requirements: 10 distinct theme concepts, innovative cooperative mechanics, player synergy hook, replayability factor. Ensure avoid standard medieval fantasy or generic sci-fi tropes.",
+  "variant_type": "CLEAN",
+  "intended_requirements": [
+    "10 distinct theme concepts",
+    "innovative cooperative mechanics",
+    "player synergy hook",
+    "replayability factor"
+  ],
+  "intent_preserved": true
+}

@@ -41,6 +41,15 @@ Write-Host "  Installing backend dependencies from requirements.txt..."
 & $VenvPython -m pip install -r (Join-Path $BackendDir "requirements.txt") --quiet
 Write-Host "  Backend dependencies installed successfully." -ForegroundColor Green
 
+Write-Host "  Setting up local SQLite database..."
+Push-Location $BackendDir
+try {
+    & $VenvPython -m alembic upgrade head
+    Write-Host "  Database migrations applied successfully." -ForegroundColor Green
+} finally {
+    Pop-Location
+}
+
 # 3. Setup Frontend Node Dependencies
 Write-Host "[3/4] Setting up frontend dependencies..." -ForegroundColor Yellow
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {

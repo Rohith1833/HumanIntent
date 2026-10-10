@@ -22,6 +22,13 @@ STRICT BANS ON UNREQUESTED EXPANSIONS (unless explicitly requested by user):
    - Identify only the unanswered dimension itself (e.g., "recommendation data source", "content requirements", "data storage method"), never candidate values or examples.
 4. DO NOT invent frameworks, databases, cloud platforms, or architectures.
 
+STRICT BOUNDARY INVARIANT (NO CONTROL-TEXT OR SYSTEM LEAKAGE):
+The final enhanced prompt must NEVER contain:
+- Template meta-instructions (e.g., "Category Template Guidance", "Adhere to template", "Template Instructions")
+- System names, pipeline components, or validator concepts (e.g., "HumanIntent", "Intent Validator", "Quality Scorer", "Intent preservation")
+- Analysis field names or JSON schema terminology (e.g., "missing_context", "explicit_requirements", "needs_clarification", "PromptAnalysis")
+The final enhanced prompt must be completely free of meta-commentary, clean, and directly usable by another AI without knowing HumanIntent exists.
+
 STRICT OUTPUT CONTRACT:
 1. The FIRST CHARACTER of your response must belong to the enhanced prompt itself.
 2. Absolutely NO prefatory commentary, introductions, or conversational filler (e.g., do NOT write "Here is the enhanced prompt:", "Sure,", "Certainly,", "Enhanced version:").
@@ -78,19 +85,23 @@ def build_enhancer_user_message(
     assumptions_note = ""
     if allow_reasonable_assumptions:
         assumptions_note = (
-            "\n9. REASONABLE ASSUMPTIONS DIRECTIVE: The user elected to enhance with reasonable assumptions. "
+            "\n10. REASONABLE ASSUMPTIONS DIRECTIVE: The user elected to enhance with reasonable assumptions. "
             "If an unspecified implementation choice is required, instruct the downstream AI to choose a simple reasonable "
             "option and state the assumption before proceeding. Do NOT convert assumptions into hard explicit requirements "
             "or pre-select unrequested technologies."
         )
 
     return (
-        f"ORIGINAL USER REQUEST:\n"
-        f"{original_prompt}\n\n"
-        f"STRUCTURED INTENT ANALYSIS:\n"
-        f"{analysis_json}\n\n"
-        f"{template_guidance}\n\n"
-        f"ENHANCEMENT DIRECTIVE:\n"
+        f"<AUTHORITATIVE_USER_REQUEST>\n"
+        f"{original_prompt.strip()}\n"
+        f"</AUTHORITATIVE_USER_REQUEST>\n\n"
+        f"<STRUCTURED_INTENT_ANALYSIS>\n"
+        f"{analysis_json}\n"
+        f"</STRUCTURED_INTENT_ANALYSIS>\n\n"
+        f"<CATEGORY_TEMPLATE_GUIDANCE>\n"
+        f"{template_guidance}\n"
+        f"</CATEGORY_TEMPLATE_GUIDANCE>\n\n"
+        f"<ENHANCEMENT_DIRECTIVE>\n"
         f"Rewrite this into a clean instruction prompt for another AI adhering to these rules:\n"
         f"1. Start immediately with the enhanced prompt. Zero conversational intro or label like 'Here is the enhanced prompt'.\n"
         f"2. Never use meta-instructions like 'Instruct the implementing AI:' or 'Tell the AI to:'. Address the downstream AI directly.\n"
@@ -99,6 +110,8 @@ def build_enhancer_user_message(
         f"5. If preferences has items: include them under 'PREFERENCES' (e.g. 'Keep the presentation engaging and cool'). Do NOT drop non-empty preferences!\n"
         f"6. If missing_context has items: list them under 'UNSPECIFIED DETAILS' neutrally without candidate options or square brackets. Do NOT drop non-empty missing context! Do NOT list items already specified (e.g., if professional tone is in preferences, never list tone as unspecified). Do NOT invent technologies or specifications for any missing context (no SQLite, CSV, React, CLI, etc.).\n"
         f"7. State directly: Do not assume specific technologies, databases, demographics, pricing, or features that were not provided. If an unspecified decision materially changes implementation, ask for clarification or state a minimal assumption before proceeding.\n"
-        f"8. STRICT ANTI-INVENTION: Do NOT invent extra features (pricing, brands, demographics, sizes, login, databases). Do NOT inject boilerplate non-functional requirements (responsive design, security, privacy) unless explicitly requested in the prompt."
-        f"{assumptions_note}"
+        f"8. STRICT ANTI-INVENTION: Do NOT invent extra features (pricing, brands, demographics, sizes, login, databases). Do NOT inject boilerplate non-functional requirements (responsive design, security, privacy) unless explicitly requested in the prompt.\n"
+        f"9. STRICT PURITY: Do NOT copy category template instructions, system names ('HumanIntent'), or schema field names into the enhanced prompt."
+        f"{assumptions_note}\n"
+        f"</ENHANCEMENT_DIRECTIVE>"
     )

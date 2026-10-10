@@ -1,0 +1,57 @@
+{
+  "version": "humanintent-v0.1.0-live",
+  "created_at": "2026-10-08T10:25:36.179350+00:00",
+  "factory_version": "0.1.0",
+  "random_seed": 42,
+  "generator_model": "llama3",
+  "record_counts": {
+    "total": 22,
+    "accepted": 19,
+    "rejected": 3
+  },
+  "category_counts": {
+    "CODING": 2,
+    "DEBUGGING": 2,
+    "WRITING": 2,
+    "EDUCATION": 1,
+    "RESEARCH": 2,
+    "PLANNING": 1,
+    "DATA_ANALYSIS": 2,
+    "CREATIVE": 2,
+    "IMAGE_GENERATION": 1,
+    "SUMMARIZATION": 2,
+    "GENERAL": 2
+  },
+  "source_counts": {
+    "SYNTHETIC": 19
+  },
+  "variant_counts": {},
+  "excluded_counts": {
+    "VALIDATION_FAILED": 3
+  },
+  "filter_reasons": {
+    "VALIDATION_FAILED": 3
+  },
+  "quality_distribution": {
+    "mean": 94.47,
+    "min": 81.0,
+    "max": 99.0,
+    "sample_size": 19
+  },
+  "consent_count": 0,
+  "sanitization_count": 0,
+  "dedup_count": 0,
+  "split_counts": {
+    "train": 17,
+    "validation": 2
+  },
+  "generation_parameters": {
+    "temperature": 0.7,
+    "synthetic_per_seed": 2
+  },
+  "filter_configuration": {
+    "minimum_quality_score": 75.0,
+    "max_inflation_ratio": 8.0,
+    "near_duplicate_threshold": 0.85
+  }
+}

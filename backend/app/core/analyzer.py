@@ -3,9 +3,11 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 from pydantic import ValidationError
+from app.core.instruction_boundary import detect_control_text, scan_analysis_contamination
 from app.llm.ollama_client import OllamaResponseError, ollama_client
 from app.prompts.analyzer import ANALYZER_SYSTEM_PROMPT
 from app.schemas.analysis import (
+    ActionFamily,
     AmbiguityAssessment,
     AmbiguityLevel,
     AnalysisGrounding,
@@ -14,10 +16,18 @@ from app.schemas.analysis import (
     DeliverableSemantics,
     GroundingEvidence,
     GroundingRelation,
+    IntentAnchor,
     PromptAnalysis,
     PromptCategory,
     PromptClassification,
     SourceType,
+)
+from app.core.intent_anchor import (
+    ACTION_FAMILY_TO_CATEGORY,
+    check_analysis_coherence,
+    extract_intent_anchor,
+    is_self_contained_operation,
+    normalize_missing_context_dimension,
 )
 
 logger = logging.getLogger("humanintent.analyzer")
@@ -303,103 +313,48 @@ class PromptAnalyzer:
             if item_str.lower() not in [c.lower() for c in cleaned]:
                 cleaned.append(item_str)
 
-        return cleaned
+        # Apply centralized intent-anchor normalization for missing context dimensions
+        anchor = extract_intent_anchor(raw_prompt)
+        normalized_cleaned = []
+        for item in cleaned:
+            norm = normalize_missing_context_dimension(item, anchor.action_family, raw_prompt)
+            if norm and norm.lower() not in [nc.lower() for nc in normalized_cleaned]:
+                normalized_cleaned.append(norm)
+
+        return normalized_cleaned
 
     def _apply_classification_consistency(
         self, raw_prompt: str, classification: PromptClassification
     ) -> PromptClassification:
-        """Apply principled classification consistency based strictly on the user's primary deliverable."""
-        prompt_lower = raw_prompt.lower()
+        """Apply centralized classification consistency based strictly on the user's requested action anchor."""
+        anchor = extract_intent_anchor(raw_prompt)
+        expected_category = ACTION_FAMILY_TO_CATEGORY.get(anchor.action_family, PromptCategory.GENERAL)
 
-        # 1. EDUCATION / PLANNING Deliverable Priority:
-        is_curriculum = bool(
-            re.search(r"\b(?:curriculum|lesson\s+plan|study\s+plan|syllabus|course\s+plan|teaching\s+sequence)\b", prompt_lower)
-            or (re.search(r"\b(?:teach|course)\b", prompt_lower) and re.search(r"\b(?:beginner|student|curriculum|module|week)\b", prompt_lower))
-        )
-        if is_curriculum:
-            if classification.category not in {PromptCategory.EDUCATION, PromptCategory.PLANNING}:
+        if anchor.is_strong:
+            if classification.category != expected_category:
                 logger.info(
-                    "Classification consistency: reclassified from %s to EDUCATION based on curriculum deliverable.",
+                    "Classification consistency: reclassified from %s to %s based on strong action anchor (%s).",
                     classification.category.value,
+                    expected_category.value,
+                    anchor.primary_action,
                 )
-                return PromptClassification(category=PromptCategory.EDUCATION, confidence=0.95)
+                return PromptClassification(category=expected_category, confidence=anchor.confidence)
             return classification
 
-        if re.search(r"\b(?:roadmap|study\s+schedule|schedule\s+to\s+learn|5-day\s+study\s+schedule|plan\s+a\s+\d+[\s-]day)\b", prompt_lower) and not re.search(r"\b(?:build|code|implement|create\s+an?\s+app)\b", prompt_lower):
-            if classification.category not in {PromptCategory.PLANNING, PromptCategory.EDUCATION}:
-                logger.info(
-                    "Classification consistency: reclassified from %s to PLANNING based on roadmap deliverable.",
-                    classification.category.value,
-                )
-                return PromptClassification(category=PromptCategory.PLANNING, confidence=0.95)
-            return classification
-
-        # 2. RESEARCH Deliverable Priority:
-        is_research = bool(
-            re.search(r"\b(?:research|investigate|compare\s+(?:the\s+)?(?:main\s+)?(?:approaches|methods|techniques)|literature\s+review)\b", prompt_lower)
-            and not re.search(r"\b(?:build|code|implement|fix|debug)\b", prompt_lower)
-        )
-        if is_research and classification.category in {PromptCategory.GENERAL, PromptCategory.CODING}:
-            logger.info("Classification consistency: reclassified from %s to RESEARCH based on research deliverable.", classification.category.value)
-            return PromptClassification(category=PromptCategory.RESEARCH, confidence=0.95)
-
-        # 3. WRITING Deliverable Priority:
-        is_writing = bool(
-            re.search(r"\b(?:write|draft|rewrite|compose)\s+(?:a\s+|an\s+|the\s+|\d+\s+)?(?:email|newsletter|subject\s+lines?|blog|post|article|essay|letter|memo|speech)\b", prompt_lower)
-            and not re.search(r"\b(?:build|code|implement|create\s+(?:an?\s+)?(?:app|page|website|tool|script))\b", prompt_lower)
-        )
-        if is_writing and classification.category in {PromptCategory.GENERAL, PromptCategory.CREATIVE}:
-            logger.info("Classification consistency: reclassified from %s to WRITING based on text writing deliverable.", classification.category.value)
-            return PromptClassification(category=PromptCategory.WRITING, confidence=0.95)
-
-        # 4. CREATIVE vs CODING (Brainstorming / Ideation vs Building Software):
-        is_brainstorm = bool(
-            re.search(r"\b(?:brainstorm|creative\s+ideas?|concept\s+ideas?|suggest\s+ideas?)\b", prompt_lower)
-            and not re.search(r"\b(?:build|code|implement|develop|deploy)\b", prompt_lower)
-        )
-        if is_brainstorm and classification.category == PromptCategory.CODING:
-            logger.info(
-                "Classification consistency: reclassified from CODING to CREATIVE based on ideation deliverable.",
-            )
-            return PromptClassification(category=PromptCategory.CREATIVE, confidence=0.95)
-
-        # 5. CODING Deliverable Priority:
-        is_software_build = bool(
-            re.search(r"\b(?:website|web\s+page|page|app|application|dashboard|api|backend|frontend|script|software)\b", prompt_lower)
-            and any(w in prompt_lower for w in ["quiz", "calculator", "widget", "tool", "page", "app", "dashboard", "portal", "system", "portfolio", "feature", "form"])
-            and any(w in prompt_lower for w in ["need", "create", "build", "make", "develop", "implement", "code", "write", "shows", "click"])
-        )
-        if is_software_build:
-            if classification.category in {PromptCategory.CREATIVE, PromptCategory.GENERAL, PromptCategory.EDUCATION}:
-                logger.info(
-                    "Classification consistency: reclassified from %s to CODING based on software build deliverable.",
-                    classification.category.value,
-                )
-                return PromptClassification(category=PromptCategory.CODING, confidence=0.95)
-
-        # 6. SUMMARIZATION Deliverable Invariant:
+        # Weak anchor: allow analyzer semantic judgment unless obvious invalid edge cases (like SUMMARIZATION without text or DEBUGGING without error)
         if classification.category == PromptCategory.SUMMARIZATION:
             is_summary = bool(
-                re.search(r"\b(?:summarize|condense|digest|summary|synopsis|give\s+me\s+short\s+notes\s+from|tldr|key\s+takeaways)\b", prompt_lower)
+                re.search(r"\b(?:summarize|condense|digest|summary|synopsis|give\s+me\s+short\s+notes\s+from|tldr|key\s+takeaways)\b", raw_prompt.lower())
             )
             if not is_summary:
-                if any(w in prompt_lower for w in ["build", "code", "implement", "app", "website", "script", "tool", "page", "system"]):
-                    logger.info("Classification consistency: reclassified from SUMMARIZATION to CODING based on action deliverable.")
-                    return PromptClassification(category=PromptCategory.CODING, confidence=0.90)
-                elif any(w in prompt_lower for w in ["write", "draft", "compose", "email", "essay", "post"]):
-                    logger.info("Classification consistency: reclassified from SUMMARIZATION to WRITING based on text deliverable.")
-                    return PromptClassification(category=PromptCategory.WRITING, confidence=0.90)
-                elif any(w in prompt_lower for w in ["plan", "schedule", "roadmap"]):
-                    logger.info("Classification consistency: reclassified from SUMMARIZATION to PLANNING based on planning deliverable.")
-                    return PromptClassification(category=PromptCategory.PLANNING, confidence=0.90)
-                elif any(w in prompt_lower for w in ["explain", "teach"]):
-                    logger.info("Classification consistency: reclassified from SUMMARIZATION to EDUCATION based on teaching deliverable.")
-                    return PromptClassification(category=PromptCategory.EDUCATION, confidence=0.90)
-                elif any(w in prompt_lower for w in ["research", "compare", "investigate"]):
-                    logger.info("Classification consistency: reclassified from SUMMARIZATION to RESEARCH based on research deliverable.")
-                    return PromptClassification(category=PromptCategory.RESEARCH, confidence=0.90)
-                else:
-                    return PromptClassification(category=PromptCategory.GENERAL, confidence=0.85)
+                return PromptClassification(category=PromptCategory.GENERAL, confidence=0.75)
+
+        if classification.category == PromptCategory.DEBUGGING:
+            is_debug = bool(
+                re.search(r"\b(?:fix|debug|troubleshoot|diagnose|error|bug|issue|crash|exception|failing|broken|deadlock|freeze|hang|traceback|panic)\b", raw_prompt.lower())
+            )
+            if not is_debug:
+                return PromptClassification(category=PromptCategory.GENERAL, confidence=0.75)
 
         return classification
 
@@ -883,7 +838,13 @@ class PromptAnalyzer:
         )
 
         deliv = analysis.deliverable_semantics
-        is_missing_purpose = bool(deliv and not deliv.is_functionally_complete)
+        anchor = getattr(analysis, "intent_anchor", None) or extract_intent_anchor(user_prompt, clarification_answers)
+        if is_self_contained_operation(user_prompt, anchor.action_family):
+            if deliv:
+                deliv.is_functionally_complete = True
+            is_missing_purpose = False
+        else:
+            is_missing_purpose = bool(deliv and not deliv.is_functionally_complete)
 
         if is_ultra_vague or is_missing_purpose:
             amb.score = max(amb.score, 75)
@@ -923,7 +884,7 @@ class PromptAnalyzer:
         allow_reasonable_assumptions: bool = False,
     ) -> PromptAnalysis:
         """Analyze a raw human prompt and return a validated PromptAnalysis structure with 1-attempt recovery."""
-        user_content = user_prompt
+        user_content = f"<USER_REQUEST>\n{user_prompt.strip()}\n</USER_REQUEST>"
         valid_answers = [
             ca for ca in (clarification_answers or [])
             if ca.answer and ca.answer.strip()
@@ -937,13 +898,14 @@ class PromptAnalyzer:
                 )
             clarifications_block = "\n\n".join(answers_formatted)
             user_content = (
-                f"ORIGINAL REQUEST:\n\"{user_prompt}\"\n\n"
-                f"USER CLARIFICATIONS:\n{clarifications_block}\n\n"
-                f"INSTRUCTIONS:\n"
-                f"Treat clarification answers as authoritative user-provided information.\n"
+                f"<USER_REQUEST>\n{user_prompt.strip()}\n</USER_REQUEST>\n\n"
+                f"<USER_CLARIFICATIONS>\n{clarifications_block}\n</USER_CLARIFICATIONS>\n\n"
+                f"<ANALYSIS_DIRECTIVE>\n"
+                f"Treat clarification answers inside <USER_CLARIFICATIONS> as authoritative user-provided information.\n"
                 f"Update the structured interpretation accordingly.\n"
                 f"Recalculate ambiguity based on the combined information.\n"
-                f"Do not re-ask questions targeting dimensions the user has already answered."
+                f"Do not re-ask questions targeting dimensions the user has already answered.\n"
+                f"</ANALYSIS_DIRECTIVE>"
             )
 
         schema = self._build_schema_contract()
@@ -967,17 +929,20 @@ class PromptAnalyzer:
                 {
                     "role": "user",
                     "content": (
-                        f"Original user prompt:\n\"{user_content}\"\n\n"
+                        f"{user_content}\n\n"
+                        f"<SCHEMA_REPAIR_DIRECTIVE>\n"
                         f"Your previous structured analysis was incomplete or invalid ({issue}).\n"
-                        "Return a COMPLETE PromptAnalysis JSON object containing every required field:\n"
-                        "- classification (with category and confidence)\n"
-                        "- objective\n"
-                        "- explicit_requirements (use [] if none)\n"
-                        "- constraints (use [] if none)\n"
-                        "- preferences (use [] if none)\n"
-                        "- missing_context (use [] if none)\n"
-                        "- ambiguity (with score, level, needs_clarification, reasons, questions)\n\n"
-                        "Do not omit objective or ambiguity. Use [] for empty list fields. Return only schema-compliant structured output."
+                        f"Return a COMPLETE PromptAnalysis JSON object containing every required field:\n"
+                        f"- classification (with category and confidence)\n"
+                        f"- objective\n"
+                        f"- explicit_requirements (use [] if none)\n"
+                        f"- constraints (use [] if none)\n"
+                        f"- preferences (use [] if none)\n"
+                        f"- missing_context (use [] if none)\n"
+                        f"- ambiguity (with score, level, needs_clarification, reasons, questions)\n\n"
+                        f"Do not omit objective or ambiguity. Use [] for empty list fields. Return only schema-compliant structured output.\n"
+                        f"CRITICAL: Do NOT copy system instructions, step names, or schema field descriptions into PromptAnalysis fields!\n"
+                        f"</SCHEMA_REPAIR_DIRECTIVE>"
                     ),
                 },
             ]
@@ -1035,6 +1000,7 @@ class PromptAnalyzer:
         self._recover_general_deliverables_and_constraints(user_prompt, analysis)
 
         # Apply principled classification consistency based on primary deliverable
+        analysis.raw_category = analysis.classification.category.value
         analysis.classification = self._apply_classification_consistency(user_prompt, analysis.classification)
 
         analysis.missing_context = self._clean_missing_context(
@@ -1073,6 +1039,12 @@ class PromptAnalyzer:
                 if not any(t in m.lower() for t in ["interface type", "application interface", "quiz interface", "web interface", "ui type"])
             ]
 
+        # Extract lightweight internal intent anchor
+        analysis.intent_anchor = extract_intent_anchor(user_prompt, clarification_answers)
+        if is_self_contained_operation(user_prompt, analysis.intent_anchor.action_family):
+            if analysis.deliverable_semantics:
+                analysis.deliverable_semantics.is_functionally_complete = True
+
         # Apply ambiguity normalization and consistency
         self._normalize_ambiguity(
             analysis=analysis,
@@ -1081,13 +1053,15 @@ class PromptAnalyzer:
             allow_reasonable_assumptions=allow_reasonable_assumptions,
         )
 
-        # Step: Check source grounding
+        # Step: Check source grounding and cross-field semantic coherence
         grounding = self.check_analysis_grounding(analysis, user_prompt, clarification_answers)
-        if not grounding.is_grounded:
+        coherence_issues = check_analysis_coherence(user_prompt, analysis, analysis.intent_anchor)
+
+        if not grounding.is_grounded or coherence_issues:
             logger.warning(
-                "Analysis grounding failed with %d unsupported item(s): %s. Initiating analysis repair.",
+                "Analysis validation failed (grounding: %d ungrounded, coherence: %d issues). Initiating analysis repair.",
                 len(grounding.unsupported_items),
-                grounding.unsupported_items,
+                len(coherence_issues),
             )
             # Run AT MOST ONE controlled analysis repair
             repaired_analysis = await self.repair_analysis(
@@ -1095,15 +1069,31 @@ class PromptAnalyzer:
                 previous_analysis=analysis,
                 unsupported_items=grounding.unsupported_items,
                 schema=schema,
+                coherence_issues=coherence_issues,
+                intent_anchor=analysis.intent_anchor,
             )
             # Apply normalizations to repaired analysis
+            repaired_analysis.intent_anchor = extract_intent_anchor(user_prompt, clarification_answers)
+            if is_self_contained_operation(user_prompt, repaired_analysis.intent_anchor.action_family):
+                if repaired_analysis.deliverable_semantics:
+                    repaired_analysis.deliverable_semantics.is_functionally_complete = True
+
             repaired_analysis.explicit_requirements = [
                 r for r in repaired_analysis.explicit_requirements
                 if not self._is_superseded_or_rejected(r.lower(), prompt_lower)
             ]
             repaired_analysis.preferences = self._recover_style_preferences(user_prompt, repaired_analysis.preferences)
             self._recover_general_deliverables_and_constraints(user_prompt, repaired_analysis)
+            repaired_analysis.raw_category = repaired_analysis.classification.category.value
             repaired_analysis.classification = self._apply_classification_consistency(user_prompt, repaired_analysis.classification)
+            repaired_analysis.missing_context = self._clean_missing_context(
+                repaired_analysis.missing_context,
+                repaired_analysis.objective,
+                repaired_analysis.explicit_requirements,
+                repaired_analysis.preferences,
+                user_prompt,
+                category=repaired_analysis.classification.category.value,
+            )
             self._normalize_ambiguity(
                 analysis=repaired_analysis,
                 user_prompt=user_prompt,
@@ -1111,11 +1101,17 @@ class PromptAnalyzer:
                 allow_reasonable_assumptions=allow_reasonable_assumptions,
             )
             repaired_grounding = self.check_analysis_grounding(repaired_analysis, user_prompt, clarification_answers)
+            repaired_coherence = check_analysis_coherence(user_prompt, repaired_analysis, repaired_analysis.intent_anchor)
+            if repaired_coherence:
+                for ci in repaired_coherence:
+                    repaired_grounding.unsupported_items.append(f"coherence violation: {ci}")
+                repaired_grounding.is_grounded = False
+
             if repaired_grounding.is_grounded:
                 logger.info("Analysis repair passed successfully.")
             else:
                 logger.warning(
-                    "Analysis repair failed: %d unsupported item(s) remain: %s.",
+                    "Analysis repair failed: %d unsupported/incoherent item(s) remain: %s.",
                     len(repaired_grounding.unsupported_items),
                     repaired_grounding.unsupported_items,
                 )
@@ -1335,6 +1331,14 @@ class PromptAnalyzer:
             if not is_summary:
                 unsupported_items.append("classification is SUMMARIZATION without text or summarization deliverable")
 
+        # 6. Check Internal Instruction / Control-Text Contamination Across ALL Fields
+        contamination_issues = scan_analysis_contamination(
+            analysis, raw_prompt, clarification_answers
+        )
+        if contamination_issues:
+            for issue in contamination_issues:
+                unsupported_items.append(f"internal instruction contamination: {issue}")
+
         is_grounded = len(unsupported_items) == 0
         return AnalysisGrounding(
             is_grounded=is_grounded,
@@ -1348,27 +1352,52 @@ class PromptAnalyzer:
         previous_analysis: PromptAnalysis,
         unsupported_items: list[str],
         schema: Dict[str, Any],
+        coherence_issues: Optional[list[str]] = None,
+        intent_anchor: Optional[IntentAnchor] = None,
     ) -> PromptAnalysis:
         """Regenerate structured analysis using only information supported by user words (max 1 repair attempt)."""
-        logger.info("Analysis repair started for %d unsupported item(s).", len(unsupported_items))
+        coherence_issues = coherence_issues or []
+        logger.info(
+            "Analysis repair started for %d unsupported item(s) and %d coherence issue(s).",
+            len(unsupported_items),
+            len(coherence_issues),
+        )
+        coherence_block = ""
+        if coherence_issues:
+            coherence_block = (
+                f"<SEMANTIC_COHERENCE_ISSUES>\n"
+                f"The previous analysis contained the following cross-field semantic coherence violations:\n"
+                + "\n".join(f"- {item}" for item in coherence_issues)
+                + "\n</SEMANTIC_COHERENCE_ISSUES>\n\n"
+            )
+        anchor_info = ""
+        if intent_anchor and intent_anchor.is_strong:
+            anchor_info = f"- Required action family: {intent_anchor.action_family.value} ({intent_anchor.primary_action} -> {intent_anchor.target_or_deliverable}). Classification and objective must describe this action.\n"
+
         repair_messages = [
             {"role": "system", "content": ANALYZER_SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": (
-                    f"USER REQUEST:\n\"{user_content}\"\n\n"
-                    f"PREVIOUS ANALYSIS:\n{previous_analysis.model_dump_json(indent=2)}\n\n"
-                    f"GROUNDING ISSUES DETECTED:\n"
-                    f"The previous analysis asserted the following unsupported items not found in the user's words or assigned the wrong semantic role:\n"
+                    f"{user_content}\n\n"
+                    f"<PREVIOUS_ANALYSIS>\n{previous_analysis.model_dump_json(indent=2)}\n</PREVIOUS_ANALYSIS>\n\n"
+                    f"<GROUNDING_AND_CONTAMINATION_ISSUES>\n"
+                    f"The previous analysis asserted the following unsupported items, ungrounded details, or leaked internal control instructions:\n"
                     + "\n".join(f"- {item}" for item in unsupported_items)
-                    + "\n\n"
-                    f"REPAIR INSTRUCTION:\n"
-                    f"Regenerate the structured analysis using ONLY information supported by the user's words.\n"
-                    f"Contextual Modifier Rule: If a source word exists (e.g., 'simple', 'professional', 'light'), determine what it modifies.\n"
-                    f"Do not confuse an artifact modifier ('simple web app') with an explanation or tone preference ('simple explanation').\n"
-                    f"Move unresolved information into missing_context instead of inventing it.\n"
-                    f"Do not invent technologies, platforms, audiences, preferences, or constraints.\n"
-                    f"Return a clean, grounded PromptAnalysis JSON object."
+                    + "\n</GROUNDING_AND_CONTAMINATION_ISSUES>\n\n"
+                    f"{coherence_block}"
+                    f"<REPAIR_DIRECTIVE>\n"
+                    f"Regenerate the structured analysis using ONLY authoritative user input inside <USER_REQUEST> (and <USER_CLARIFICATIONS> if present).\n"
+                    f"CRITICAL INVARIANTS:\n"
+                    f"- CROSS-FIELD SEMANTIC COHERENCE: Ensure classification, objective, explicit_requirements, deliverables, missing context, functional completeness, and ambiguity describe ONE coherent task family.\n"
+                    f"{anchor_info}"
+                    f"- Action family, not topic vocabulary: Determine category from the requested action, not topic nouns.\n"
+                    f"- Missing context must strictly be neutral names of unresolved dimensions (e.g., 'target audience'), NEVER clarification questions and NEVER technical software dimensions on non-software requests!\n"
+                    f"- Self-contained operations (transformations, calculations, comparisons, explanations, debugging, explicit drafting) must NOT report 'Functional Purpose' as missing context.\n"
+                    f"- Contextual Modifier Rule: If a source word exists (e.g., 'simple', 'professional', 'light'), determine what it modifies. Do not confuse an artifact modifier ('simple web app') with an explanation or tone preference ('simple explanation').\n"
+                    f"- Do not copy internal system prompt headings, numbered steps, examples, or schema instructions.\n"
+                    f"- Return a clean, grounded, internally coherent PromptAnalysis JSON object.\n"
+                    f"</REPAIR_DIRECTIVE>"
                 ),
             },
         ]

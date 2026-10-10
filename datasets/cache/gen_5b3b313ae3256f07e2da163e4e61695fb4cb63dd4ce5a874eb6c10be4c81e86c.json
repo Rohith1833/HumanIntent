@@ -1,0 +1,13 @@
+{
+  "variant_id": "41eee325-a92e-4bf0-a471-f9e4ec3cd1e0",
+  "seed_id": "planning_001",
+  "prompt": "here's a 30-day onboarding plan for our new junior backend engineer! we need to get them up to speed quickly and set them up for success. can you help me create a phased roadmap that includes:\n\n* week 1: get them set up with a local dev environment, and have them submit their first pr (pull request). we'll pair them with a mentor and assign some easy tasks to get them started.\n* week 2-3: have them start working on some small projects, maybe even a simple feature or bug fix. we'll keep an eye on their progress and provide feedback and guidance.\n* week 4-5: start bringing them into the fold with more challenging tasks and introducing them to the rest of the team.\n* week 6-30: have them work on some bigger projects, maybe even a small feature or two. we'll keep an eye on their progress and provide feedback and guidance.\n\nlet's also include some self-assessment goals for them to work on each week, like learning a new skill or improving their code quality. and, of course, we'll make sure the workload is manageable and doesn't lead to burnout.",
+  "variant_type": "CASUAL",
+  "intended_requirements": [
+    "week-by-week milestones",
+    "local environment setup and first PR in week 1",
+    "pairing and mentor assignments",
+    "30-day self-assessment goals"
+  ],
+  "intent_preserved": true
+}

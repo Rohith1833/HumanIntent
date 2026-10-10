@@ -1,0 +1,13 @@
+{
+  "variant_id": "469d38d0-8ec0-4ea6-9426-83729a529c3e",
+  "seed_id": "education_001",
+  "prompt": "hey can you help me explain how zero-knowledge proofs work using the classic cave analogy for high school students? I need zero-knowledge proof concept, Ali Baba cave analogy, plain accessible language, high school level. also avoid mathematical formulas, under 400 words if possible thanks",
+  "variant_type": "CASUAL",
+  "intended_requirements": [
+    "zero-knowledge proof concept",
+    "Ali Baba cave analogy",
+    "plain accessible language",
+    "high school level"
+  ],
+  "intent_preserved": true
+}

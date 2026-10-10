@@ -1,6 +1,9 @@
 from typing import Annotated, Literal, Optional, Union
+from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 from app.schemas.analysis import ClarificationAnswer, ClarificationQuestion, PromptAnalysis
+from app.schemas.quality import PromptQualityReport
+from app.schemas.validation import PromptValidation
 
 
 class EnhanceRequest(BaseModel):
@@ -9,6 +12,10 @@ class EnhanceRequest(BaseModel):
         min_length=1,
         max_length=10000,
         description="The rough human prompt to enhance.",
+    )
+    session_id: Optional[UUID] = Field(
+        default=None,
+        description="Optional persistent session identifier for multi-round journeys.",
     )
     clarification_answers: Optional[list[ClarificationAnswer]] = Field(
         default=None,
@@ -28,12 +35,9 @@ class EnhanceRequest(BaseModel):
         return stripped
 
 
-from app.schemas.quality import PromptQualityReport
-from app.schemas.validation import PromptValidation
-
-
 class EnhancedResponse(BaseModel):
     status: Literal["enhanced"] = "enhanced"
+    session_id: UUID
     original_prompt: str
     analysis: PromptAnalysis
     enhanced_prompt: str
@@ -41,31 +45,38 @@ class EnhancedResponse(BaseModel):
     template: Optional[str] = None
     validation: Optional[PromptValidation] = None
     quality: Optional[PromptQualityReport] = None
+    history_saved: bool = True
 
 
 class ClarificationRequiredResponse(BaseModel):
     status: Literal["needs_clarification"] = "needs_clarification"
+    session_id: UUID
     original_prompt: str
     analysis: PromptAnalysis
     questions: list[ClarificationQuestion]
     model: str
+    history_saved: bool = True
 
 
 class ValidationFailedResponse(BaseModel):
     status: Literal["validation_failed"] = "validation_failed"
+    session_id: UUID
     original_prompt: str
     analysis: PromptAnalysis
     validation: PromptValidation
     message: str = "HumanIntent could not produce a sufficiently faithful enhanced prompt after one repair attempt."
     model: str
+    history_saved: bool = True
 
 
 class AnalysisFailedResponse(BaseModel):
     status: Literal["analysis_failed"] = "analysis_failed"
+    session_id: UUID
     original_prompt: str
     analysis: PromptAnalysis
     message: str = "HumanIntent could not verify that the analysis was grounded in your request."
     model: str
+    history_saved: bool = True
 
 
 EnhanceResponse = Annotated[

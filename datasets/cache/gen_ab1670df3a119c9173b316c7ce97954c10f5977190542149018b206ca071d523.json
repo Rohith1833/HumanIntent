@@ -1,0 +1,13 @@
+{
+  "variant_id": "3c9afeff-3069-464d-9806-8f673e1c5026",
+  "seed_id": "data_analysis_001",
+  "prompt": "Here's a realistic user prompt reflecting the requested style:\n\n\"Hey AI, I need help analyzing some API response times. Can you calculate the median, p95, p99, and standard deviation? Oh, and if there are any outliers, can you tell me how many and what they are? I don't really know how to do this stuff, so can you walk me through it step-by-step too?\"\n\nThis prompt is ambiguous because it doesn't explicitly provide the necessary information, such as the sample of API response times, which would require the AI to clarify or request additional details.",
+  "variant_type": "AMBIGUOUS",
+  "intended_requirements": [
+    "statistical calculations",
+    "median and percentiles",
+    "standard deviation",
+    "outlier identification"
+  ],
+  "intent_preserved": true
+}

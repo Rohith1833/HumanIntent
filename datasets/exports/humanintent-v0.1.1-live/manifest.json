@@ -1,0 +1,76 @@
+{
+  "version": "humanintent-v0.1.1-live",
+  "created_at": "2026-10-08T15:53:23.258815+00:00",
+  "factory_version": "0.1.0",
+  "random_seed": 42,
+  "generator_model": "llama3:latest",
+  "record_counts": {
+    "total": 22,
+    "accepted": 6,
+    "rejected": 16
+  },
+  "category_counts": {
+    "CODING": 1,
+    "DEBUGGING": 2,
+    "IMAGE_GENERATION": 1,
+    "SUMMARIZATION": 1,
+    "GENERAL": 1
+  },
+  "source_counts": {
+    "SYNTHETIC": 6
+  },
+  "variant_counts": {},
+  "excluded_counts": {
+    "MISSING_CONSTRAINT": 10,
+    "MISSING_REQUIREMENT": 7,
+    "META_CONTENT": 9,
+    "QUANTITY_MISMATCH": 3,
+    "VALIDATION_FAILED": 3,
+    "MALFORMED_TARGET": 2,
+    "COMPOUND_TASK_LOSS": 1
+  },
+  "filter_reasons": {
+    "MISSING_CONSTRAINT": 10,
+    "MISSING_REQUIREMENT": 7,
+    "META_CONTENT": 9,
+    "QUANTITY_MISMATCH": 3,
+    "VALIDATION_FAILED": 3,
+    "MALFORMED_TARGET": 2,
+    "COMPOUND_TASK_LOSS": 1
+  },
+  "curation_rejection_counts": {
+    "MISSING_CONSTRAINT": 10,
+    "MISSING_REQUIREMENT": 7,
+    "META_CONTENT": 9,
+    "QUANTITY_MISMATCH": 3,
+    "VALIDATION_FAILED": 3,
+    "MALFORMED_TARGET": 2,
+    "COMPOUND_TASK_LOSS": 1
+  },
+  "target_integrity_pass_rate": 0.2727,
+  "source_dependency_rejections": 0,
+  "constraint_recall_failures": 10,
+  "malformed_target_rejections": 2,
+  "quality_distribution": {
+    "mean": 97.17,
+    "min": 96.0,
+    "max": 99.0,
+    "sample_size": 6
+  },
+  "consent_count": 0,
+  "sanitization_count": 0,
+  "dedup_count": 0,
+  "split_counts": {
+    "train": 5,
+    "validation": 1
+  },
+  "generation_parameters": {
+    "temperature": 0.7,
+    "synthetic_per_seed": 2
+  },
+  "filter_configuration": {
+    "minimum_quality_score": 75.0,
+    "max_inflation_ratio": 8.0,
+    "near_duplicate_threshold": 0.85
+  }
+}

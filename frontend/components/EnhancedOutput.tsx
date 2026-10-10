@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { EnhancedResponse } from "@/lib/api";
 import { QualityReport } from "@/components/QualityReport";
+import { FeedbackWidget } from "@/components/FeedbackWidget";
 
 interface EnhancedOutputProps {
   result: EnhancedResponse;
@@ -91,6 +92,13 @@ export const EnhancedOutput: React.FC<EnhancedOutputProps> = ({ result }) => {
       </div>
 
       {result.quality && <QualityReport report={result.quality} />}
+
+      {result.session_id && (
+        <FeedbackWidget
+          sessionId={result.session_id}
+          enhancedPrompt={result.enhanced_prompt}
+        />
+      )}
     </section>
   );
 };

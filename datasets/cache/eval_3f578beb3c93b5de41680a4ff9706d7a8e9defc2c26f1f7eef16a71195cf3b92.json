@@ -1,0 +1,57 @@
+{
+  "status": "analysis_failed",
+  "analysis_dict": {
+    "classification": {
+      "category": "GENERAL",
+      "confidence": 0.5
+    },
+    "objective": "Create a cozy and inviting atmosphere",
+    "explicit_requirements": [],
+    "constraints": [],
+    "preferences": [],
+    "missing_context": [
+      "Specific book or topic",
+      "Intended audience",
+      "Purpose of the gathering"
+    ],
+    "ambiguity": {
+      "score": 25,
+      "level": "LOW",
+      "needs_clarification": false,
+      "reasons": [
+        "Unclear primary objective",
+        "Missing functional purpose",
+        "Unresolved contradictions"
+      ],
+      "questions": []
+    },
+    "grounding": {
+      "is_grounded": false,
+      "evidence": [],
+      "unsupported_items": [
+        "objective completely drifted from user request"
+      ]
+    },
+    "deliverable_semantics": {
+      "deliverable_type": null,
+      "intended_outcome": "Create a cozy and inviting atmosphere",
+      "is_functionally_complete": true
+    },
+    "intent_anchor": {
+      "action_family": "GENERAL",
+      "primary_action": "general request",
+      "target_or_deliverable": "general response",
+      "confidence": 0.5,
+      "is_strong": false
+    },
+    "raw_category": "GENERAL"
+  },
+  "enhanced_prompt": "",
+  "is_valid": false,
+  "validation_issues": [],
+  "quality_score": 0.0,
+  "inflation_ratio": null,
+  "repaired": false,
+  "initial_rejected_prompt": null,
+  "initial_rejection_reason": null
+}

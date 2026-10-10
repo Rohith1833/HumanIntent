@@ -1,0 +1,104 @@
+{
+  "status": "enhanced",
+  "analysis_dict": {
+    "classification": {
+      "category": "DATA_ANALYSIS",
+      "confidence": 0.95
+    },
+    "objective": "calculate API response time statistics and identify outliers",
+    "explicit_requirements": [
+      "median",
+      "p95",
+      "p99",
+      "standard deviation",
+      "outlier identification"
+    ],
+    "constraints": [],
+    "preferences": [
+      "step-by-step guidance"
+    ],
+    "missing_context": [
+      "sample of API response times"
+    ],
+    "ambiguity": {
+      "score": 25,
+      "level": "LOW",
+      "needs_clarification": false,
+      "reasons": [
+        "unclear primary objective",
+        "missing platform or technology",
+        "missing functional purpose"
+      ],
+      "questions": []
+    },
+    "grounding": {
+      "is_grounded": true,
+      "evidence": [
+        {
+          "field": "preferences",
+          "value": "step-by-step guidance",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "step",
+          "relation": "MODIFIES_OUTPUT_STYLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "median",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "median",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "p95",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "p95",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "p99",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "p99",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "standard deviation",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "standard deviation",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "outlier identification",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "outlier identification",
+          "relation": "MODIFIES_DELIVERABLE"
+        }
+      ],
+      "unsupported_items": []
+    },
+    "deliverable_semantics": {
+      "deliverable_type": null,
+      "intended_outcome": "calculate the median",
+      "is_functionally_complete": true
+    },
+    "intent_anchor": {
+      "action_family": "DATA_ANALYSIS",
+      "primary_action": "analyze supplied or referenced data",
+      "target_or_deliverable": "data analysis deliverable",
+      "confidence": 0.9,
+      "is_strong": true
+    },
+    "raw_category": "DATA_ANALYSIS"
+  },
+  "enhanced_prompt": "Act as an expert data analyst. Calculate the median, p95, p99, and standard deviation of the API response times. Identify any outliers and provide the number and values. Please provide the sample of API response times needed for this calculation.\n\nCORE/EXPLICIT REQUIREMENTS:\n- Median\n- p95\n- p99\n- Standard deviation\n- Outlier identification\n\nPREFERENCES:\n- Step-by-step guidance\n\nOUTPUT STRUCTURE:\n- Provide the calculated statistics (median, p95, p99, standard deviation) and outlier information in a clear and concise format.",
+  "is_valid": true,
+  "validation_issues": [],
+  "quality_score": 92.0,
+  "inflation_ratio": 0.83,
+  "repaired": true,
+  "initial_rejected_prompt": "Act as an expert data analyst. Calculate the median, p95, p99, and standard deviation of the API response times. Identify any outliers and provide the number and values. Walk me through the calculation step-by-step.\n\nCORE/EXPLICIT REQUIREMENTS:\n- Median\n- p95\n- p99\n- Standard deviation\n- Outlier identification\n\nPREFERENCES:\n- Step-by-step guidance\n\nUNSPECIFIED DETAILS:\n- Sample of API response times\n\nOUTPUT STRUCTURE:\n- Provide the calculated statistics (median, p95, p99, standard deviation) and outlier information in a clear and concise format.",
+  "initial_rejection_reason": "Initial draft required repair"
+}

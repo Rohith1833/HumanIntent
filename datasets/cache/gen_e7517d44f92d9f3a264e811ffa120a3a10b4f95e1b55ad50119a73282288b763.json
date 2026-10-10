@@ -1,0 +1,13 @@
+{
+  "variant_id": "c64afb13-b6ea-4878-9bb4-a279049da675",
+  "seed_id": "summarization_001",
+  "prompt": "Here is a realistic user prompt reflecting the requested style:\n\n\"Summarize the abstract of a research paper on perovskite solar cell efficiency into three bulleted executive takeaways:\n\n• Identify the key efficiency milestone achieved in the study\n• Do NOT include any technical jargon or formulae\n• Quantify the primary degradation bottleneck and explain its commercial viability implications in 1-2 sentences\n\nPlease provide exactly three concise bullets, using plain non-academic language to convey the essential findings of the study.",
+  "variant_type": "CONSTRAINED",
+  "intended_requirements": [
+    "extract key efficiency milestone",
+    "identify primary degradation bottleneck",
+    "summarize commercial viability implications",
+    "exactly three concise bullets"
+  ],
+  "intent_preserved": true
+}

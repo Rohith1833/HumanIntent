@@ -1,0 +1,91 @@
+{
+  "status": "validation_failed",
+  "analysis_dict": {
+    "classification": {
+      "category": "PLANNING",
+      "confidence": 0.9
+    },
+    "objective": "Develop a phased 30-day onboarding roadmap for a junior backend engineer joining an agile development team",
+    "explicit_requirements": [
+      "Week-by-week milestones",
+      "Local environment setup and first PR in week 1",
+      "Pairing and mentor assignments",
+      "30-day self-assessment goals"
+    ],
+    "constraints": [],
+    "preferences": [],
+    "missing_context": [
+      "Specific technology stack or tools",
+      "Pre-requisites or assumed knowledge"
+    ],
+    "ambiguity": {
+      "score": 30,
+      "level": "MEDIUM",
+      "needs_clarification": false,
+      "reasons": [
+        "Missing context about technology stack or tools"
+      ],
+      "questions": []
+    },
+    "grounding": {
+      "is_grounded": true,
+      "evidence": [
+        {
+          "field": "explicit_requirements",
+          "value": "Week-by-week milestones",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Week-by-week milestones",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "Local environment setup and first PR in week 1",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Local environment setup and first PR in week 1",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "Pairing and mentor assignments",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Pairing and mentor assignments",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "30-day self-assessment goals",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "30-day self-assessment goals",
+          "relation": "MODIFIES_DELIVERABLE"
+        }
+      ],
+      "unsupported_items": []
+    },
+    "deliverable_semantics": {
+      "deliverable_type": "roadmap",
+      "intended_outcome": "joining an agile development team",
+      "is_functionally_complete": true
+    },
+    "intent_anchor": {
+      "action_family": "PLANNING",
+      "primary_action": "plan or schedule roadmap",
+      "target_or_deliverable": "plan or schedule deliverable",
+      "confidence": 0.9,
+      "is_strong": true
+    },
+    "raw_category": "EDUCATION"
+  },
+  "enhanced_prompt": "Act as an experienced strategic planner and workflow advisor. Develop a phased 30-day onboarding roadmap for a junior backend engineer joining an agile development team.\n\nCORE / EXPLICIT REQUIREMENTS:\n\n* Week-by-week milestones\n* Local environment setup and first PR in week 1\n* Pairing and mentor assignments\n* 30-day self-assessment goals\n\nPHASES / MILESTONES:\n\n* Week 1: Local environment setup and first PR\n* Week 2-3: Pairing and mentor assignments\n* Week 4-5: Self-assessment and goal setting\n* Week 6-30: Ongoing pairing, mentorship, and self-assessment\n\nThe user has not specified:\n- Specific technology stack or tools\n- Pre-requisites or assumed knowledge\n\nDo not assume these details without confirmation. Ask for clarification if needed.\n\nOUTPUT EXPECTATIONS / OUTPUT FORMAT:\n\nA phased 30-day onboarding roadmap for a junior backend engineer joining an agile development team",
+  "is_valid": false,
+  "validation_issues": [
+    "The enhanced prompt invents a new objective ('Act as an experienced strategic planner and workflow advisor.') that was not present in the original user request.",
+    "The enhanced prompt assumes a specific role (strategic planner and workflow advisor) that was not mentioned in the original user request or structured intent analysis.",
+    "The enhanced prompt does not include the requirement to prioritize a realistic workload avoiding burnout, which was present in the original user request.",
+    "The enhanced prompt assumes the use of specific technology stack or tools, which was left unspecified in the original user request and structured intent analysis."
+  ],
+  "quality_score": 0.0,
+  "inflation_ratio": null,
+  "repaired": true,
+  "initial_rejected_prompt": "Act as an experienced strategic planner and workflow advisor. Develop a phased 30-day onboarding roadmap for a junior backend engineer joining an agile development team.\n\nCORE / EXPLICIT REQUIREMENTS:\n\n* Week-by-week milestones\n* Local environment setup and first PR in week 1\n* Pairing and mentor assignments\n* 30-day self-assessment goals\n\n* Specific technology stack or tools\n* Pre-requisites or assumed knowledge\n\nOUTPUT EXPECTATIONS / OUTPUT FORMAT:\n\n* A phased 30-day onboarding roadmap for a junior backend engineer joining an agile development team",
+  "initial_rejection_reason": "Initial draft required repair"
+}

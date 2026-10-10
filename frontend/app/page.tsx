@@ -5,21 +5,26 @@ import { Header } from "@/components/Header";
 import { UnderstoodIntent } from "@/components/UnderstoodIntent";
 import { EnhancedOutput } from "@/components/EnhancedOutput";
 import { ClarificationCard } from "@/components/ClarificationCard";
+import { HistoryDrawer } from "@/components/HistoryDrawer";
 import {
   enhancePrompt,
   getHealth,
   ClarificationAnswer,
   EnhanceResponse,
   HealthResponse,
+  HistoryDetailResponse,
 } from "@/lib/api";
 
 export default function Home() {
   const [prompt, setPrompt] = useState("");
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<EnhanceResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [isLoadingHealth, setIsLoadingHealth] = useState(true);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [cumulativeAnswers, setCumulativeAnswers] = useState<ClarificationAnswer[]>([]);
 
   // Check backend & Ollama health on initial load
   useEffect(() => {
@@ -48,8 +53,6 @@ export default function Home() {
     };
   }, []);
 
-  const [cumulativeAnswers, setCumulativeAnswers] = useState<ClarificationAnswer[]>([]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = prompt.trim();
@@ -58,10 +61,12 @@ export default function Home() {
     setIsLoading(true);
     setError(null);
     setCumulativeAnswers([]);
+    setSessionId(null);
 
     try {
       const response = await enhancePrompt(trimmed);
       setResult(response);
+      setSessionId(response.session_id);
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -99,9 +104,11 @@ export default function Home() {
 
     try {
       const response = await enhancePrompt(trimmed, {
+        session_id: sessionId || undefined,
         clarification_answers: merged,
       });
       setResult(response);
+      setSessionId(response.session_id);
       if (response.status === "enhanced") {
         setCumulativeAnswers([]);
       }
@@ -125,10 +132,12 @@ export default function Home() {
 
     try {
       const response = await enhancePrompt(trimmed, {
+        session_id: sessionId || undefined,
         allow_reasonable_assumptions: true,
         clarification_answers: cumulativeAnswers.length > 0 ? cumulativeAnswers : undefined,
       });
       setResult(response);
+      setSessionId(response.session_id);
       if (response.status === "enhanced") {
         setCumulativeAnswers([]);
       }
@@ -143,11 +152,71 @@ export default function Home() {
     }
   };
 
+  const handleSelectHistorySession = (detail: HistoryDetailResponse) => {
+    setPrompt(detail.original_prompt);
+    setSessionId(detail.session_id);
+    setError(null);
+    setCumulativeAnswers([]);
+
+    // Reconstruct user-facing result with 0 LLM calls
+    if (detail.status === "enhanced" && detail.latest_analysis) {
+      setResult({
+        status: "enhanced",
+        session_id: detail.session_id,
+        original_prompt: detail.original_prompt,
+        analysis: detail.latest_analysis,
+        enhanced_prompt: detail.final_enhanced_prompt || "",
+        model: detail.model || "llama3.2",
+        template: detail.template || undefined,
+        validation: detail.validation || undefined,
+        quality: detail.quality || undefined,
+        history_saved: detail.history_saved,
+      });
+    } else if (detail.status === "needs_clarification" && detail.latest_analysis) {
+      const lastRound = detail.clarification_rounds[detail.clarification_rounds.length - 1];
+      const questions = lastRound?.questions || detail.latest_analysis.ambiguity?.questions || [];
+      setResult({
+        status: "needs_clarification",
+        session_id: detail.session_id,
+        original_prompt: detail.original_prompt,
+        analysis: detail.latest_analysis,
+        questions: questions,
+        model: detail.model || "llama3.2",
+        history_saved: detail.history_saved,
+      });
+    } else if (detail.status === "validation_failed" && detail.latest_analysis) {
+      setResult({
+        status: "validation_failed",
+        session_id: detail.session_id,
+        original_prompt: detail.original_prompt,
+        analysis: detail.latest_analysis,
+        validation: detail.validation!,
+        message: "HumanIntent could not produce a sufficiently faithful enhanced prompt after one repair attempt.",
+        model: detail.model || "llama3.2",
+        history_saved: detail.history_saved,
+      });
+    } else if (detail.status === "analysis_failed" && detail.latest_analysis) {
+      setResult({
+        status: "analysis_failed",
+        session_id: detail.session_id,
+        original_prompt: detail.original_prompt,
+        analysis: detail.latest_analysis,
+        message: "HumanIntent could not verify that the analysis was grounded in your request.",
+        model: detail.model || "llama3.2",
+        history_saved: detail.history_saved,
+      });
+    }
+  };
+
   const isInputEmpty = prompt.trim().length === 0;
 
   return (
     <main className="container">
-      <Header health={health} isLoadingHealth={isLoadingHealth} />
+      <Header
+        health={health}
+        isLoadingHealth={isLoadingHealth}
+        onOpenHistory={() => setIsHistoryOpen(true)}
+      />
 
       <form onSubmit={handleSubmit} className="main-card">
         <div className="input-label">
@@ -268,8 +337,14 @@ export default function Home() {
         </section>
       )}
 
+      <HistoryDrawer
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        onSelectSession={handleSelectHistorySession}
+      />
+
       <footer className="footer-note">
-        HumanIntent Phase 6 &bull; Intent-Preserving &bull; Intent-Preservation Validator &bull; Zero Hallucinated Requirements
+        HumanIntent Phase 8 &bull; Intent-Preserving &bull; Local SQLite History &bull; Explicit Training Consent &bull; Zero Hallucinated Requirements
       </footer>
     </main>
   );

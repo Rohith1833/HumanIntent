@@ -1,0 +1,349 @@
+[
+  {
+    "input": "Implement a thread-safe token bucket rate limiter in Python with acquire and refill methods.",
+    "expected_category": "CODING",
+    "primary_action": "general request",
+    "intent_anchor": {
+      "action_family": "GENERAL",
+      "primary_action": "general request",
+      "target_or_deliverable": "general response",
+      "confidence": 0.5,
+      "is_strong": false
+    },
+    "raw_model_category": "UNKNOWN",
+    "final_category": "PLANNING",
+    "confidence": 0.95,
+    "objective": "Design and implement a thread-safe token bucket rate limiter in Python",
+    "explicit_requirements": [
+      "thread-safe",
+      "token bucket rate limiter",
+      "Python"
+    ],
+    "missing_context": [
+      "acquire and refill methods",
+      "specific implementation details"
+    ],
+    "functional_completeness": true,
+    "ambiguity_score": 15,
+    "ambiguity_level": "LOW",
+    "needs_clarification": false,
+    "template": "Planning",
+    "validation_status": "VALID",
+    "enhanced_prompt_sample": "Act as an experienced software developer.\nDesign and implement a thread-safe token bucket rate limiter in Python.\n\nCORE / EXPLICIT REQUIREMENTS:\n\u2022 thread-safe\n\u2022 token bucket rate limiter\n\u2022 Python\nUNSP"
+  },
+  {
+    "input": "Why does this Python multiprocessing worker freeze when using a shared queue on Windows?",
+    "expected_category": "DEBUGGING",
+    "primary_action": "general request",
+    "intent_anchor": {
+      "action_family": "GENERAL",
+      "primary_action": "general request",
+      "target_or_deliverable": "general response",
+      "confidence": 0.5,
+      "is_strong": false
+    },
+    "raw_model_category": "UNKNOWN",
+    "final_category": "GENERAL",
+    "confidence": 0.75,
+    "objective": "Identify the primary reason why a Python multiprocessing worker freezes when using a shared queue on Windows",
+    "explicit_requirements": [
+      "multiprocessing",
+      "shared queue",
+      "Windows",
+      "freezing",
+      "Python"
+    ],
+    "missing_context": [
+      "Python version",
+      "worker function implementation"
+    ],
+    "functional_completeness": true,
+    "ambiguity_score": 42,
+    "ambiguity_level": "MEDIUM",
+    "needs_clarification": false,
+    "template": "General",
+    "validation_status": "VALID",
+    "enhanced_prompt_sample": "Act as a developer familiar with Python and multiprocessing.\n\nIdentify the primary reason why a Python multiprocessing worker freezes when using a shared queue on Windows.\n\nEXPLICIT REQUIREMENTS:\nmult"
+  },
+  {
+    "input": "Draft a formal announcement letter welcoming our new vice president of engineering to the executive team.",
+    "expected_category": "WRITING",
+    "primary_action": "draft communication or content",
+    "intent_anchor": {
+      "action_family": "WRITING",
+      "primary_action": "draft communication or content",
+      "target_or_deliverable": "written communication deliverable",
+      "confidence": 0.95,
+      "is_strong": true
+    },
+    "raw_model_category": "UNKNOWN",
+    "final_category": "WRITING",
+    "confidence": 0.95,
+    "objective": "Draft a formal announcement letter welcoming the new Vice President of Engineering to the executive team",
+    "explicit_requirements": [],
+    "missing_context": [
+      "recipient",
+      "tone",
+      "communication purpose"
+    ],
+    "functional_completeness": true,
+    "ambiguity_score": 60,
+    "ambiguity_level": "MEDIUM",
+    "needs_clarification": false,
+    "template": "Writing",
+    "validation_status": "VALID",
+    "enhanced_prompt_sample": "Act as a professional communications writer.\nDraft a formal announcement letter welcoming the new Vice President of Engineering to the executive team.\n\nPURPOSE & OBJECTIVE:\nClearly state the message b"
+  },
+  {
+    "input": "Explain how zero-knowledge proofs work using the classic cave analogy for high school students.",
+    "expected_category": "EDUCATION",
+    "primary_action": "explain conceptual topic or differences",
+    "intent_anchor": {
+      "action_family": "EDUCATION_EXPLANATION",
+      "primary_action": "explain conceptual topic or differences",
+      "target_or_deliverable": "conceptual explanation",
+      "confidence": 0.95,
+      "is_strong": true
+    },
+    "raw_model_category": "UNKNOWN",
+    "final_category": "EDUCATION",
+    "confidence": 0.95,
+    "objective": "Explain zero-knowledge proofs using the classic cave analogy for high school students",
+    "explicit_requirements": [
+      "high school students",
+      "classic cave analogy"
+    ],
+    "missing_context": [
+      "familiarity with cryptography",
+      "technical jargon avoidance"
+    ],
+    "functional_completeness": true,
+    "ambiguity_score": 12,
+    "ambiguity_level": "LOW",
+    "needs_clarification": false,
+    "template": "Education",
+    "validation_status": "VALID",
+    "enhanced_prompt_sample": "Act as an effective teacher and educational communicator. Explain how zero-knowledge proofs work using the classic cave analogy for high school students.\n\nCore/Explicit Requirements:\n\n* Classic cave a"
+  },
+  {
+    "input": "Investigate and compare the empirical throughput tradeoffs between B-tree and LSM-tree storage engines under write-heavy workloads.",
+    "expected_category": "RESEARCH",
+    "primary_action": "investigate and synthesize research evidence",
+    "intent_anchor": {
+      "action_family": "RESEARCH",
+      "primary_action": "investigate and synthesize research evidence",
+      "target_or_deliverable": "research synthesis",
+      "confidence": 0.95,
+      "is_strong": true
+    },
+    "raw_model_category": "UNKNOWN",
+    "final_category": "RESEARCH",
+    "confidence": 0.95,
+    "objective": "Investigate and compare the empirical throughput tradeoffs between B-tree and LSM-tree storage engines under write-heavy workloads.",
+    "explicit_requirements": [
+      "empirical throughput tradeoffs",
+      "B-tree and LSM-tree storage engines",
+      "write-heavy workloads"
+    ],
+    "missing_context": [
+      "specific database management system or platforms",
+      "content requirements",
+      "evaluation metrics or criteria"
+    ],
+    "functional_completeness": true,
+    "ambiguity_score": 0,
+    "ambiguity_level": "LOW",
+    "needs_clarification": false,
+    "template": "Research",
+    "validation_status": "VALID",
+    "enhanced_prompt_sample": "Act as an objective, analytical researcher and subject matter analyst. Investigate and compare the empirical throughput tradeoffs between B-tree and LSM-tree storage engines under write-heavy workload"
+  },
+  {
+    "input": "Develop a phased 30-day onboarding roadmap for a junior backend engineer joining an agile team.",
+    "expected_category": "PLANNING",
+    "primary_action": "plan or schedule roadmap",
+    "intent_anchor": {
+      "action_family": "PLANNING",
+      "primary_action": "plan or schedule roadmap",
+      "target_or_deliverable": "plan or schedule deliverable",
+      "confidence": 0.9,
+      "is_strong": true
+    },
+    "raw_model_category": "UNKNOWN",
+    "final_category": "PLANNING",
+    "confidence": 0.95,
+    "objective": "Create a 30-day onboarding roadmap for a junior backend engineer joining an agile team",
+    "explicit_requirements": [
+      "phased onboarding",
+      "30-day duration",
+      "junior backend engineer",
+      "agile team"
+    ],
+    "missing_context": [
+      "specific technology stack",
+      "expected skill level",
+      "onboarding goals and objectives"
+    ],
+    "functional_completeness": true,
+    "ambiguity_score": 65,
+    "ambiguity_level": "HIGH",
+    "needs_clarification": false,
+    "template": "Planning",
+    "validation_status": "VALID",
+    "enhanced_prompt_sample": "Act as an experienced strategic planner and workflow advisor. \n\nCreate a phased 30-day onboarding roadmap for a junior backend engineer joining an agile team. \n\nCore/Explicit Requirements:\n\n* Phased o"
+  },
+  {
+    "input": "Calculate the median latency, p99, and standard deviation from these response times: 12ms, 15ms, 14ms, 120ms, 18ms.",
+    "expected_category": "DATA_ANALYSIS",
+    "primary_action": "general request",
+    "intent_anchor": {
+      "action_family": "GENERAL",
+      "primary_action": "general request",
+      "target_or_deliverable": "general response",
+      "confidence": 0.5,
+      "is_strong": false
+    },
+    "raw_model_category": "UNKNOWN",
+    "final_category": "DATA_ANALYSIS",
+    "confidence": 1.0,
+    "objective": "Calculate statistics from response times",
+    "explicit_requirements": [
+      "median latency",
+      "p99",
+      "standard deviation"
+    ],
+    "missing_context": [],
+    "functional_completeness": true,
+    "ambiguity_score": 0,
+    "ambiguity_level": "LOW",
+    "needs_clarification": false,
+    "template": "Data Analysis",
+    "validation_status": "VALID",
+    "enhanced_prompt_sample": "Act as an expert data analyst and analytical consultant. Calculate the median latency, p99, and standard deviation from the following response times: 12ms, 15ms, 14ms, 120ms, 18ms.\n\nCORE / EXPLICIT RE"
+  },
+  {
+    "input": "Brainstorm ten innovative theme concepts and gameplay mechanics for a cooperative deck-building tabletop game.",
+    "expected_category": "CREATIVE_IDEATION",
+    "primary_action": "brainstorm and ideate concepts",
+    "intent_anchor": {
+      "action_family": "CREATIVE_IDEATION",
+      "primary_action": "brainstorm and ideate concepts",
+      "target_or_deliverable": "brainstormed ideas",
+      "confidence": 0.9,
+      "is_strong": true
+    },
+    "raw_model_category": "UNKNOWN",
+    "final_category": "CREATIVE",
+    "confidence": 0.9,
+    "objective": "Develop innovative theme concepts and gameplay mechanics for a cooperative deck-building tabletop game.",
+    "explicit_requirements": [
+      "10 innovative theme concepts"
+    ],
+    "missing_context": [
+      "visual style",
+      "Target audience",
+      "Gameplay complexity"
+    ],
+    "functional_completeness": true,
+    "ambiguity_score": 67,
+    "ambiguity_level": "HIGH",
+    "needs_clarification": false,
+    "template": "Creative",
+    "validation_status": "VALID",
+    "enhanced_prompt_sample": "Act as a creative conceptual thinker. Develop innovative theme concepts and gameplay mechanics for a cooperative deck-building tabletop game.\n\nCORE / EXPLICIT REQUIREMENTS:\n10 innovative theme concept"
+  },
+  {
+    "input": "Create an image prompt for a cozy bookstore cafe during a rainy afternoon with warm interior lighting.",
+    "expected_category": "IMAGE_GENERATION",
+    "primary_action": "create image or image prompt",
+    "intent_anchor": {
+      "action_family": "IMAGE_CREATION",
+      "primary_action": "create image or image prompt",
+      "target_or_deliverable": "image deliverable",
+      "confidence": 0.95,
+      "is_strong": true
+    },
+    "raw_model_category": "UNKNOWN",
+    "final_category": "IMAGE_GENERATION",
+    "confidence": 0.95,
+    "objective": "Create an image prompt for a cozy bookstore cafe during a rainy afternoon with warm interior lighting",
+    "explicit_requirements": [
+      "cozy",
+      "bookstore cafe",
+      "rainy afternoon",
+      "warm interior lighting"
+    ],
+    "missing_context": [
+      "specific architecture or building style",
+      "exact rain condition",
+      "target audience or atmosphere"
+    ],
+    "functional_completeness": true,
+    "ambiguity_score": 30,
+    "ambiguity_level": "MEDIUM",
+    "needs_clarification": false,
+    "template": "Image Generation",
+    "validation_status": "VALID",
+    "enhanced_prompt_sample": "Create a cozy bookstore cafe scene on a rainy afternoon with warm interior lighting.\n\nAs a master prompt engineer and visual art director, craft a vivid description of the visual elements.\n\nENVIRONMEN"
+  },
+  {
+    "input": "Summarize the key findings from this abstract: Recent advances in solar cell efficiency have demonstrated a 28% tandem perovskite-silicon yield under laboratory illumination, though thermal stability remains limited beyond 500 hours.",
+    "expected_category": "SUMMARIZATION",
+    "primary_action": "summarize or condense material",
+    "intent_anchor": {
+      "action_family": "SUMMARIZATION",
+      "primary_action": "summarize or condense material",
+      "target_or_deliverable": "summary deliverable",
+      "confidence": 0.95,
+      "is_strong": true
+    },
+    "raw_model_category": "UNKNOWN",
+    "final_category": "SUMMARIZATION",
+    "confidence": 0.95,
+    "objective": "Summarize the key findings from the abstract about solar cell efficiency.",
+    "explicit_requirements": [
+      "Summarize",
+      "Key findings",
+      "Abstract",
+      "Solar cell efficiency"
+    ],
+    "missing_context": [
+      "Thermal stability beyond 500 hours"
+    ],
+    "functional_completeness": true,
+    "ambiguity_score": 15,
+    "ambiguity_level": "LOW",
+    "needs_clarification": false,
+    "template": "Summarization",
+    "validation_status": "INVALID",
+    "enhanced_prompt_sample": ""
+  },
+  {
+    "input": "What factors should an organization weigh when transitioning from centralized to decentralized operations?",
+    "expected_category": "GENERAL",
+    "primary_action": "general request",
+    "intent_anchor": {
+      "action_family": "GENERAL",
+      "primary_action": "general request",
+      "target_or_deliverable": "general response",
+      "confidence": 0.5,
+      "is_strong": false
+    },
+    "raw_model_category": "UNKNOWN",
+    "final_category": "RESEARCH",
+    "confidence": 0.95,
+    "objective": "Provide guidance on factors to consider when transitioning from centralized to decentralized operations",
+    "explicit_requirements": [],
+    "missing_context": [
+      "The scope of the organization being considered",
+      "The specific decentralized approach being adopted"
+    ],
+    "functional_completeness": true,
+    "ambiguity_score": 35,
+    "ambiguity_level": "MEDIUM",
+    "needs_clarification": false,
+    "template": "Research",
+    "validation_status": "VALID",
+    "enhanced_prompt_sample": "Act as an objective, analytical researcher and subject matter analyst. \n\nOBJECTIVE & SCOPE: Investigate the core research question rigorously without preconceived bias, considering the scope of the or"
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "variant_id": "c17ed7ab-792b-4eb5-9a63-220dcde1bccf",
+  "seed_id": "creative_001",
+  "prompt": "Here is the generated prompt:\n\n\"Design ten unique theme concepts and cooperative gameplay mechanics for a tabletop deck-building game, emphasizing player synergy and replayability. Themes should avoid standard medieval fantasy and generic sci-fi settings. Examples of innovative mechanics to consider include cooperative puzzle-solving, dynamic environment manipulation, and adaptive difficulty curves. Provide a clear and concise description of each theme concept, including gameplay mechanics and potential synergies between players.",
+  "variant_type": "CLEAN",
+  "intended_requirements": [
+    "10 distinct theme concepts",
+    "innovative cooperative mechanics",
+    "player synergy hook",
+    "replayability factor"
+  ],
+  "intent_preserved": true
+}

@@ -1,0 +1,13 @@
+{
+  "variant_id": "9bc130f7-0572-476d-a0d5-7f577162f769",
+  "seed_id": "image_001",
+  "prompt": "cozy bookstore cafe on rainy afternoon warm amber lighting steaming coffee cup on wooden table rain streaks on large glass window depth of field",
+  "variant_type": "SHORT",
+  "intended_requirements": [
+    "bookstore interior with steaming coffee cup",
+    "rain streaks on large glass window",
+    "warm amber ambient lighting",
+    "depth of field"
+  ],
+  "intent_preserved": true
+}

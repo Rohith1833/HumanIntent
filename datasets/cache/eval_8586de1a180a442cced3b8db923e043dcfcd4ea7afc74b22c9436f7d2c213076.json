@@ -1,0 +1,107 @@
+{
+  "status": "enhanced",
+  "analysis_dict": {
+    "classification": {
+      "category": "RESEARCH",
+      "confidence": 0.95
+    },
+    "objective": "Summarize the abstract of a research paper on perovskite solar cell efficiency into three bulleted executive takeaways",
+    "explicit_requirements": [
+      "three bulleted executive takeaways",
+      "3 bulleted executive takeaways",
+      "2 sentences\n\nplease provide",
+      "3 concise bullets"
+    ],
+    "constraints": [
+      "Do NOT include any technical jargon or formulae"
+    ],
+    "preferences": [
+      "plain non-academic language",
+      "concise bullets"
+    ],
+    "missing_context": [],
+    "ambiguity": {
+      "score": 10,
+      "level": "LOW",
+      "needs_clarification": false,
+      "reasons": [],
+      "questions": []
+    },
+    "grounding": {
+      "is_grounded": true,
+      "evidence": [
+        {
+          "field": "preferences",
+          "value": "plain non-academic language",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "plain",
+          "relation": "MODIFIES_OUTPUT_STYLE"
+        },
+        {
+          "field": "preferences",
+          "value": "concise bullets",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "concise",
+          "relation": "MODIFIES_OUTPUT_STYLE"
+        },
+        {
+          "field": "constraints",
+          "value": "Do NOT include any technical jargon or formulae",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "Do NOT include any technical jargon or formulae",
+          "relation": "CONSTRAINT"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "three bulleted executive takeaways",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "three bulleted executive takeaways",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "3 bulleted executive takeaways",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "3 bulleted executive takeaways",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "2 sentences\n\nplease provide",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "2 sentences\n\nplease provide",
+          "relation": "MODIFIES_DELIVERABLE"
+        },
+        {
+          "field": "explicit_requirements",
+          "value": "3 concise bullets",
+          "source_type": "ORIGINAL_PROMPT",
+          "evidence": "3 concise bullets",
+          "relation": "MODIFIES_DELIVERABLE"
+        }
+      ],
+      "unsupported_items": []
+    },
+    "deliverable_semantics": {
+      "deliverable_type": null,
+      "intended_outcome": "summarize",
+      "is_functionally_complete": true
+    },
+    "intent_anchor": {
+      "action_family": "RESEARCH",
+      "primary_action": "investigate and synthesize research evidence",
+      "target_or_deliverable": "research synthesis",
+      "confidence": 0.95,
+      "is_strong": true
+    },
+    "raw_category": "RESEARCH"
+  },
+  "enhanced_prompt": "Act as an objective researcher.\n\nSummarize the abstract of a research paper on perovskite solar cell efficiency into three bulleted executive takeaways:\n\n• Identify the key efficiency milestone achieved in the study\n• Do NOT include any technical jargon or formulae\n• Quantify the primary degradation bottleneck and explain its commercial viability implications in 1-2 sentences\n\n• Use plain non-academic language\n• Keep the bullets concise\n\n• No additional information provided",
+  "is_valid": true,
+  "validation_issues": [],
+  "quality_score": 97.0,
+  "inflation_ratio": 0.9,
+  "repaired": false,
+  "initial_rejected_prompt": null,
+  "initial_rejection_reason": null
+}

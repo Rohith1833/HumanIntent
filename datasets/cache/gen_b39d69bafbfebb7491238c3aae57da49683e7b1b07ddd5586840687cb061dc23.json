@@ -1,0 +1,13 @@
+{
+  "variant_id": "250d5243-02cd-4256-bf14-ad4ed7b7e97a",
+  "seed_id": "summarization_001",
+  "prompt": "Can you build me a takeaways for my project?",
+  "variant_type": "AMBIGUOUS",
+  "intended_requirements": [
+    "extract key efficiency milestone",
+    "identify primary degradation bottleneck",
+    "summarize commercial viability implications",
+    "exactly three concise bullets"
+  ],
+  "intent_preserved": true
+}

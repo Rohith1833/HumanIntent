@@ -1,0 +1,143 @@
+[
+  {
+    "case": "vague_planning",
+    "prompt": "Help me plan a product rollout schedule",
+    "duration_seconds": 70.64,
+    "classification": "PLANNING",
+    "objective": "Help me plan a product rollout schedule",
+    "explicit_requirements": [],
+    "missing_context": [
+      "What specific aspects of the product rollout need planning?"
+    ],
+    "preferences": [],
+    "constraints": [],
+    "ambiguity_score": 35,
+    "needs_clarification": false,
+    "is_grounded": true,
+    "enhanced_prompt_length": 365,
+    "analysis_leaks": [],
+    "prompt_leaks": [],
+    "leak_count": 0,
+    "status": "CLEAN"
+  },
+  {
+    "case": "vague_planning",
+    "prompt": "Help me plan a product rollout schedule",
+    "error": "'charmap' codec can't encode character '\\u2713' in position 3: character maps to <undefined>",
+    "leak_count": -1
+  },
+  {
+    "case": "technical",
+    "prompt": "Create a Go function that parses ISO8601 timestamps and computes the delta in milliseconds",
+    "duration_seconds": 99.21,
+    "classification": "DATA_ANALYSIS",
+    "objective": "Compute the delta in milliseconds between two ISO8601 timestamps",
+    "explicit_requirements": [
+      "ISO8601 timestamps",
+      "milliseconds"
+    ],
+    "missing_context": [
+      "time zones",
+      "date formats"
+    ],
+    "preferences": [],
+    "constraints": [],
+    "ambiguity_score": 30,
+    "needs_clarification": false,
+    "is_grounded": true,
+    "enhanced_prompt_length": 315,
+    "analysis_leaks": [],
+    "prompt_leaks": [],
+    "leak_count": 0,
+    "status": "CLEAN"
+  },
+  {
+    "case": "technical",
+    "prompt": "Create a Go function that parses ISO8601 timestamps and computes the delta in milliseconds",
+    "error": "'charmap' codec can't encode character '\\u2713' in position 3: character maps to <undefined>",
+    "leak_count": -1
+  },
+  {
+    "case": "writing",
+    "prompt": "Draft a polite message to an external vendor asking for an extension on our invoice payment deadline",
+    "duration_seconds": 70.18,
+    "classification": "DEBUGGING",
+    "objective": "Request an extension on invoice payment deadline from an external vendor",
+    "explicit_requirements": [],
+    "missing_context": [
+      "communication purpose"
+    ],
+    "preferences": [],
+    "constraints": [],
+    "ambiguity_score": 0,
+    "needs_clarification": false,
+    "is_grounded": true,
+    "enhanced_prompt_length": 357,
+    "analysis_leaks": [],
+    "prompt_leaks": [],
+    "leak_count": 0,
+    "status": "CLEAN"
+  },
+  {
+    "case": "writing",
+    "prompt": "Draft a polite message to an external vendor asking for an extension on our invoice payment deadline",
+    "error": "'charmap' codec can't encode character '\\u2713' in position 3: character maps to <undefined>",
+    "leak_count": -1
+  },
+  {
+    "case": "compound",
+    "prompt": "Generate 3 marketing angles for a smart water bottle, pick the most persuasive one, and draft a 50-word instagram caption for it",
+    "duration_seconds": 81.3,
+    "classification": "GENERAL",
+    "objective": "To create three marketing angles for a smart water bottle and select the most persuasive one.",
+    "explicit_requirements": [
+      "3 marketing angles"
+    ],
+    "missing_context": [
+      "development platform or framework",
+      "Target Audience",
+      "Functional Purpose"
+    ],
+    "preferences": [],
+    "constraints": [],
+    "ambiguity_score": 60,
+    "needs_clarification": false,
+    "is_grounded": true,
+    "enhanced_prompt_length": 404,
+    "analysis_leaks": [],
+    "prompt_leaks": [],
+    "leak_count": 0,
+    "status": "CLEAN"
+  },
+  {
+    "case": "compound",
+    "prompt": "Generate 3 marketing angles for a smart water bottle, pick the most persuasive one, and draft a 50-word instagram caption for it",
+    "error": "'charmap' codec can't encode character '\\u2713' in position 3: character maps to <undefined>",
+    "leak_count": -1
+  },
+  {
+    "case": "short_question",
+    "prompt": "What is the difference between TCP and UDP?",
+    "duration_seconds": 94.65,
+    "classification": "GENERAL",
+    "objective": "Describe the difference between TCP and UDP protocols",
+    "explicit_requirements": [],
+    "missing_context": [],
+    "preferences": [],
+    "constraints": [],
+    "ambiguity_score": 0,
+    "needs_clarification": false,
+    "is_grounded": true,
+    "enhanced_prompt_length": 88,
+    "analysis_leaks": [],
+    "prompt_leaks": [],
+    "leak_count": 0,
+    "status": "CLEAN"
+  },
+  {
+    "case": "short_question",
+    "prompt": "What is the difference between TCP and UDP?",
+    "error": "'charmap' codec can't encode character '\\u2713' in position 3: character maps to <undefined>",
+    "leak_count": -1
+  }
+]

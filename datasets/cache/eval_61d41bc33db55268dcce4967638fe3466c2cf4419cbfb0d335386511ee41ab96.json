@@ -1,0 +1,14 @@
+{
+  "status": "analysis_failed",
+  "analysis_dict": null,
+  "enhanced_prompt": null,
+  "is_valid": false,
+  "validation_issues": [
+    "Pipeline error: Configured model 'llama3.2' is not installed in Ollama. Please run 'ollama run llama3.2' locally to download it. (model 'llama3.2' not found)"
+  ],
+  "quality_score": 0.0,
+  "inflation_ratio": null,
+  "repaired": false,
+  "initial_rejected_prompt": null,
+  "initial_rejection_reason": null
+}

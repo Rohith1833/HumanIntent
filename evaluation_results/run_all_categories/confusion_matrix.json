@@ -1,0 +1,35 @@
+{
+  "CODING": {
+    "CODING": 1
+  },
+  "DEBUGGING": {
+    "DEBUGGING": 1
+  },
+  "WRITING": {
+    "WRITING": 1
+  },
+  "EDUCATION": {
+    "EDUCATION": 1
+  },
+  "RESEARCH": {
+    "RESEARCH": 1
+  },
+  "PLANNING": {
+    "PLANNING": 1
+  },
+  "DATA_ANALYSIS": {
+    "DATA_ANALYSIS": 1
+  },
+  "CREATIVE": {
+    "CREATIVE": 1
+  },
+  "IMAGE_GENERATION": {
+    "IMAGE_GENERATION": 1
+  },
+  "SUMMARIZATION": {
+    "SUMMARIZATION": 1
+  },
+  "GENERAL": {
+    "EDUCATION": 1
+  }
+}

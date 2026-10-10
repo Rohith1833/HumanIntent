@@ -1,0 +1,13 @@
+{
+  "variant_id": "5cb00629-92bc-46d4-96fd-93bc1b8339a4",
+  "seed_id": "writing_001",
+  "prompt": "Draft a formal company-wide announcement email introducing the new Vice President of Engineering: professional executive tone, welcome message, background summary, call to welcome",
+  "variant_type": "SHORT",
+  "intended_requirements": [
+    "professional executive tone",
+    "welcome message",
+    "background summary",
+    "call to welcome"
+  ],
+  "intent_preserved": true
+}

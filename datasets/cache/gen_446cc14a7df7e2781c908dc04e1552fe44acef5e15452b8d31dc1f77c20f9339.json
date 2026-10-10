@@ -1,0 +1,13 @@
+{
+  "variant_id": "88d6c1a9-3e71-4c1c-8439-024b16666c22",
+  "seed_id": "creative_001",
+  "prompt": "Develop a cooperative tabletop deck-building game with innovative mechanics and theme concepts that challenge players to work together to overcome mysterious forces. The game should have a unique narrative that ties together disparate elements, such as ancient civilizations, forgotten technologies, and mysterious energies. Brainstorm ten potential theme concepts and mechanics that foster cooperation, player synergy, and replayability, but avoid straightforward medieval fantasy or generic sci-fi settings. What's the hook that drives players to work together and achieve victory?",
+  "variant_type": "AMBIGUOUS",
+  "intended_requirements": [
+    "10 distinct theme concepts",
+    "innovative cooperative mechanics",
+    "player synergy hook",
+    "replayability factor"
+  ],
+  "intent_preserved": true
+}

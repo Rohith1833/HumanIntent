@@ -6,9 +6,11 @@ import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 from pydantic import ValidationError
 
+from app.core.intent_anchor import extract_intent_anchor
+from app.core.instruction_boundary import scan_enhanced_prompt_contamination
 from app.llm.ollama_client import OllamaResponseError, ollama_client
 from app.prompts.validator import VALIDATOR_SYSTEM_PROMPT, build_validator_user_message
-from app.schemas.analysis import ClarificationAnswer, PromptAnalysis
+from app.schemas.analysis import ActionFamily, ClarificationAnswer, IntentAnchor, PromptAnalysis
 from app.schemas.validation import (
     PromptValidation,
     ValidationIssue,
@@ -98,21 +100,34 @@ class PromptValidator:
         enhanced_lower = enhanced_stripped.lower()
         original_lower = original_prompt.lower()
 
-        # 2. Self-referential meta-commentary
-        meta_matches = re.findall(
-            r"\b(?:HumanIntent|intent-preserving prompt optimizer|Here is the enhanced prompt:?)\b",
-            enhanced_stripped,
-            re.IGNORECASE,
+        # 2. Self-referential meta-commentary & internal instruction/control leakage
+        contamination_issues = scan_enhanced_prompt_contamination(
+            enhanced_stripped, original_prompt, clarification_answers
         )
-        if meta_matches:
+        if contamination_issues:
             issues.append(
                 ValidationIssue(
                     type=ValidationIssueType.META_COMMENTARY,
                     severity=ValidationSeverity.ERROR,
-                    message="Enhanced prompt contains self-referential system commentary.",
-                    evidence=meta_matches[0],
+                    message=f"Enhanced prompt contains internal system instructions or validation meta-commentary: {contamination_issues[0]}",
+                    evidence=contamination_issues[0],
                 )
             )
+        else:
+            meta_matches = re.findall(
+                r"\b(?:HumanIntent|intent-preserving prompt optimizer|Here is the enhanced prompt:?)\b",
+                enhanced_stripped,
+                re.IGNORECASE,
+            )
+            if meta_matches:
+                issues.append(
+                    ValidationIssue(
+                        type=ValidationIssueType.META_COMMENTARY,
+                        severity=ValidationSeverity.ERROR,
+                        message="Enhanced prompt contains self-referential system commentary.",
+                        evidence=meta_matches[0],
+                    )
+                )
 
         # 3. Explicit numeric quantities / limits
         # Look for patterns like "5 ideas", "3 paragraphs", "under 150 words", "10 questions"
@@ -347,6 +362,56 @@ class PromptValidator:
                                 evidence=f"Invented functional domain: {m.group(0)}",
                             )
                         )
+
+        # 6f. Check Task Family Drift against authoritative IntentAnchor
+        anchor = getattr(analysis, "intent_anchor", None) or extract_intent_anchor(original_prompt, clarification_answers)
+        if anchor and anchor.is_strong:
+            if anchor.action_family == ActionFamily.SOFTWARE_CREATION:
+                if (
+                    re.search(r"\b(?:draft\s+(?:a\s+|an\s+)?(?:email|letter|memo|speech)|write\s+(?:a\s+|an\s+)?(?:poem|story|novel|essay|press\s+release))\b", enhanced_lower)
+                    and not any(w in enhanced_lower for w in ["code", "function", "script", "software", "program", "app", "application", "tool"])
+                ):
+                    issues.append(
+                        ValidationIssue(
+                            type=ValidationIssueType.TASK_FAMILY_DRIFT,
+                            severity=ValidationSeverity.ERROR,
+                            message="Enhanced prompt drifted from software creation task family: converted software implementation to prose drafting.",
+                            evidence=f"Action family: {anchor.action_family.value} ({anchor.primary_action})",
+                        )
+                    )
+            elif anchor.action_family == ActionFamily.WRITING:
+                if (
+                    re.search(r"\b(?:build|create|implement|code)\s+(?:an?\s+)?(?:[a-z\-]+\s+)?(?:web\s+app|app|application|portal|service|database|api|script|tool)\b", enhanced_lower)
+                    or "database schema" in enhanced_lower
+                ) and not any(w in original_lower for w in ["app", "software", "code", "database", "api", "tool"]):
+                    issues.append(
+                        ValidationIssue(
+                            type=ValidationIssueType.TASK_FAMILY_DRIFT,
+                            severity=ValidationSeverity.ERROR,
+                            message="Enhanced prompt drifted from writing task family: converted text drafting task to software implementation.",
+                            evidence=f"Action family: {anchor.action_family.value} ({anchor.primary_action})",
+                        )
+                    )
+            elif anchor.action_family == ActionFamily.EDUCATION_EXPLANATION:
+                if any(w in enhanced_lower for w in ["build an app", "create an application", "deploy a service"]) and not any(w in original_lower for w in ["app", "build", "deploy"]):
+                    issues.append(
+                        ValidationIssue(
+                            type=ValidationIssueType.TASK_FAMILY_DRIFT,
+                            severity=ValidationSeverity.ERROR,
+                            message="Enhanced prompt drifted from educational explanation task family: converted explanation to software creation.",
+                            evidence=f"Action family: {anchor.action_family.value} ({anchor.primary_action})",
+                        )
+                    )
+            elif anchor.action_family == ActionFamily.PLANNING:
+                if any(w in enhanced_lower for w in ["build an app", "write a python script", "implement a function"]) and not any(w in original_lower for w in ["app", "script", "function", "code"]):
+                    issues.append(
+                        ValidationIssue(
+                            type=ValidationIssueType.TASK_FAMILY_DRIFT,
+                            severity=ValidationSeverity.ERROR,
+                            message="Enhanced prompt drifted from planning task family: converted planning/schedule to software creation.",
+                            evidence=f"Action family: {anchor.action_family.value} ({anchor.primary_action})",
+                        )
+                    )
 
         return issues
 

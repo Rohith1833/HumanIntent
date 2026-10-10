@@ -1,0 +1,13 @@
+{
+  "variant_id": "b9fa4f65-1bce-457b-9319-731604e25782",
+  "seed_id": "writing_001",
+  "prompt": "new vp eng annoucement draft",
+  "variant_type": "SHORT",
+  "intended_requirements": [
+    "professional executive tone",
+    "welcome message",
+    "background summary",
+    "call to welcome"
+  ],
+  "intent_preserved": true
+}

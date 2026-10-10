@@ -1,0 +1,13 @@
+{
+  "variant_id": "cdc30f36-6d4a-4d5b-9696-b2adefb59db6",
+  "seed_id": "education_001",
+  "prompt": "here's the deal: you've got this treasure, ali baba's cave, and you're trying to convince the sultan that you've got the magic beans without actually showing them the beans. sounds tricky, right? well, that's basically what zero-knowledge proofs do.\n\nimagine you're the thief trying to convince the sultan that you've got the treasure without revealing what it is. you want to prove that you've got it without giving away the goods. that's where zero-knowledge proofs come in.\n\nthese proofs are like a secret handshake between you and the sultan. you do a series of special moves that prove you've got the treasure without actually showing it. the sultan can verify that you've done the moves correctly, but they still don't know what the treasure is.\n\nin other words, zero-knowledge proofs let you prove a statement is true without revealing any information about what that statement is. it's like saying \"i've got the treasure\" without actually saying what the treasure is.",
+  "variant_type": "CASUAL",
+  "intended_requirements": [
+    "zero-knowledge proof concept",
+    "Ali Baba cave analogy",
+    "plain accessible language",
+    "high school level"
+  ],
+  "intent_preserved": true
+}

@@ -1,0 +1,13 @@
+{
+  "variant_id": "46fc8989-ba36-4f07-a08b-9dd97087168e",
+  "seed_id": "image_001",
+  "prompt": "Create a detailed image prompt for a cozy bookstore cafe during a rainy afternoon with warm interior lighting: bookstore interior with steaming coffee cup, rain streaks on large glass window, warm amber ambient lighting, depth of field",
+  "variant_type": "SHORT",
+  "intended_requirements": [
+    "bookstore interior with steaming coffee cup",
+    "rain streaks on large glass window",
+    "warm amber ambient lighting",
+    "depth of field"
+  ],
+  "intent_preserved": true
+}

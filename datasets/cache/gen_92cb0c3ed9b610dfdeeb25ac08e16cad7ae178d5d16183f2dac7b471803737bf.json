@@ -1,0 +1,13 @@
+{
+  "variant_id": "b450f3a9-ea91-419a-b3ea-13e919ae2511",
+  "seed_id": "image_001",
+  "prompt": "Faded pages rustling, whispers of wisdom wafting through the air, and the scent of old books mingling with the warmth of the cafe.",
+  "variant_type": "AMBIGUOUS",
+  "intended_requirements": [
+    "bookstore interior with steaming coffee cup",
+    "rain streaks on large glass window",
+    "warm amber ambient lighting",
+    "depth of field"
+  ],
+  "intent_preserved": true
+}

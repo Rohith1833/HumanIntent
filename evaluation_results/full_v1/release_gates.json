@@ -1,0 +1,72 @@
+[
+  {
+    "gate_name": "Category Accuracy",
+    "target_threshold": ">= 90.0%",
+    "actual_value": 60.38,
+    "status": "FAILED",
+    "description": "Overall accuracy of intent category classification"
+  },
+  {
+    "gate_name": "Task-Family Accuracy",
+    "target_threshold": ">= 95.0%",
+    "actual_value": 60.38,
+    "status": "FAILED",
+    "description": "Intent anchor action family consistency"
+  },
+  {
+    "gate_name": "Explicit Requirement Recall",
+    "target_threshold": ">= 95.0%",
+    "actual_value": 92.95,
+    "status": "FAILED",
+    "description": "Preservation rate of explicit user requirements"
+  },
+  {
+    "gate_name": "Constraint Recall",
+    "target_threshold": ">= 95.0%",
+    "actual_value": 73.44,
+    "status": "FAILED",
+    "description": "Preservation of negative and restrictive constraints"
+  },
+  {
+    "gate_name": "Quantity Preservation",
+    "target_threshold": ">= 97.0%",
+    "actual_value": 86.09,
+    "status": "FAILED",
+    "description": "Preservation of explicit numerical limits and item counts"
+  },
+  {
+    "gate_name": "Unsupported Requirement Rate",
+    "target_threshold": "<= 3.0%",
+    "actual_value": 10.91,
+    "status": "FAILED",
+    "description": "Rate of introducing unrequested features or hallucinations"
+  },
+  {
+    "gate_name": "Objective Drift Rate",
+    "target_threshold": "<= 2.0%",
+    "actual_value": 0.0,
+    "status": "PASSED",
+    "description": "Rate of materially changing the requested user task"
+  },
+  {
+    "gate_name": "Clarification F1",
+    "target_threshold": ">= 90.0%",
+    "actual_value": 0.0,
+    "status": "FAILED",
+    "description": "Harmonic mean of clarification precision and recall"
+  },
+  {
+    "gate_name": "Over-Clarification Rate",
+    "target_threshold": "<= 5.0%",
+    "actual_value": 0.0,
+    "status": "PASSED",
+    "description": "Clear prompts incorrectly blocked for clarification"
+  },
+  {
+    "gate_name": "Meta / Instruction Leakage",
+    "target_threshold": "== 0.0%",
+    "actual_value": 19.09,
+    "status": "FAILED",
+    "description": "Presence of internal system control wording in enhanced output"
+  }
+]

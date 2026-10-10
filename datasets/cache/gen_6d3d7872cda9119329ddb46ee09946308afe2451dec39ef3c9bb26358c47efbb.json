@@ -1,0 +1,13 @@
+{
+  "variant_id": "f0c3fcc9-f859-4fbb-ae5d-f707bcc64a9c",
+  "seed_id": "planning_001",
+  "prompt": "Develop a phased 30-day onboarding roadmap for a junior backend engineer joining an agile development team, including:\n\n* Week-by-week milestones\n* Local environment setup and first PR in week 1\n* Pairing and mentor assignments\n* 30-day self-assessment goals\n\nPlease prioritize a realistic workload avoiding burnout.",
+  "variant_type": "CLEAN",
+  "intended_requirements": [
+    "week-by-week milestones",
+    "local environment setup and first PR in week 1",
+    "pairing and mentor assignments",
+    "30-day self-assessment goals"
+  ],
+  "intent_preserved": true
+}

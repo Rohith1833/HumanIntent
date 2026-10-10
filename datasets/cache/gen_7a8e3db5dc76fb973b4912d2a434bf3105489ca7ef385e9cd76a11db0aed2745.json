@@ -1,0 +1,13 @@
+{
+  "variant_id": "cd66aebe-5961-4729-9b4b-7b96bc489581",
+  "seed_id": "education_001",
+  "prompt": "Can you build me a students for my project?",
+  "variant_type": "AMBIGUOUS",
+  "intended_requirements": [
+    "zero-knowledge proof concept",
+    "Ali Baba cave analogy",
+    "plain accessible language",
+    "high school level"
+  ],
+  "intent_preserved": true
+}

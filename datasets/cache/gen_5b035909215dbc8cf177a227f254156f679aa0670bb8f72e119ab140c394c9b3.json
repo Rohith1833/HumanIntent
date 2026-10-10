@@ -1,0 +1,13 @@
+{
+  "variant_id": "ae535442-ce2d-41f3-938c-e525bf24a75e",
+  "seed_id": "summarization_001",
+  "prompt": "Summarize a research paper abstract on perovskite solar cell efficiency into three bulleted executive takeaways. Explicit constraints: must include extract key efficiency milestone, identify primary degradation bottleneck, summarize commercial viability implications, exactly three concise bullets. Do NOT use third-party runtime dependencies, avoid any heavy external dependencies or frameworks.",
+  "variant_type": "CONSTRAINED",
+  "intended_requirements": [
+    "extract key efficiency milestone",
+    "identify primary degradation bottleneck",
+    "summarize commercial viability implications",
+    "exactly three concise bullets"
+  ],
+  "intent_preserved": true
+}
