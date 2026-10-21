@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import List, Optional, Tuple
 from dataset_factory.config import DatasetFactoryConfig
 from dataset_factory.curation import curate_candidate
@@ -16,26 +17,57 @@ logger = logging.getLogger("dataset_factory.filters")
 def check_intent_preservation(
     original_prompt: str,
     seed: SeedIntent,
+    record: Optional[DatasetRecord] = None,
 ) -> bool:
-    """Validate that the synthetic prompt preserves the core semantic intent of the seed."""
-    prompt_lower = original_prompt.lower()
+    """Validate that the synthetic prompt preserves the core semantic intent of the seed.
 
-    # If seed has core requirements, at least one core requirement or related keyword should be reflected
-    if seed.core_requirements:
-        found_any = False
-        for req in seed.core_requirements:
-            req_words = [w.lower() for w in req.split() if len(w) > 3]
-            if not req_words:
-                found_any = True
-                break
-            if any(w in prompt_lower for w in req_words):
-                found_any = True
-                break
-        if not found_any:
-            # If prompt doesn't mention any core requirement words, check intent words
+    Accounts for intentional variant semantics (e.g. ambiguity, self-correction).
+    Flags generation defects where the generator changes the meaning of seed requirements or exclusions.
+    """
+    prompt_lower = original_prompt.lower()
+    is_ambiguous = record.labels.ambiguous if (record and record.labels) else False
+
+    # 1. Core Intent Preservation
+    if not is_ambiguous:
+        if seed.core_requirements:
+            found_any = False
+            for req in seed.core_requirements:
+                req_words = [w.lower() for w in req.split() if len(w) > 3]
+                if not req_words:
+                    found_any = True
+                    break
+                if any(w in prompt_lower for w in req_words):
+                    found_any = True
+                    break
+            if not found_any:
+                intent_words = [w.lower() for w in seed.intent.split() if len(w) > 3]
+                if not any(w in prompt_lower for w in intent_words):
+                    return False
+        else:
             intent_words = [w.lower() for w in seed.intent.split() if len(w) > 3]
-            if not any(w in prompt_lower for w in intent_words):
+            if intent_words and not any(w in prompt_lower for w in intent_words):
                 return False
+
+    # 2. Seed Exclusion / Negative Constraint Integrity
+    # If the seed specifies negative exclusions, the generator must not replace them with unrelated domains
+    if seed.optional_constraints:
+        for c in seed.optional_constraints:
+            c_low = c.lower()
+            if any(k in c_low for k in ["avoid", "no ", "without", "never", "do not"]):
+                c_key_tokens = [
+                    w for w in re.findall(r"\b[a-z0-9_\-]+\b", c_low)
+                    if len(w) > 3 and w not in ["avoid", "standard", "generic", "tropes", "without", "never", "using"]
+                ]
+                if c_key_tokens:
+                    # Check if prompt introduced alternative negative constraints
+                    prompt_neg_match = re.findall(
+                        r"(?i)\b(?:do\s+not\s+feature|avoid|without|do\s+not\s+use|no)\s+([a-z0-9_\-,\s]+?)(?:\.|\n|$)",
+                        original_prompt,
+                    )
+                    if prompt_neg_match:
+                        # Prompt has negative exclusions: at least one token from the seed exclusion must be respected
+                        if not any(tok in prompt_lower for tok in c_key_tokens):
+                            return False
 
     return True
 
@@ -72,7 +104,7 @@ def filter_candidate(
 
     # 4. Intent Preservation Check (Synthetic)
     if seed and record.source_type == SourceType.SYNTHETIC:
-        if not check_intent_preservation(prompt, seed):
+        if not check_intent_preservation(prompt, seed, record=record):
             rejection_reasons.append(RejectionReason.INTENT_DRIFT)
             return CurationStatus.REJECTED, rejection_reasons
 

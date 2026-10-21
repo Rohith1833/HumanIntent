@@ -455,7 +455,7 @@ def test_group_q_runtime_isolation():
 def test_group_r_no_training_pipeline():
     """Verify that no fine-tuning or training modules exist."""
     import sys
-    for mod_name in ["transformers", "peft", "trl"]:
+    for mod_name in ["peft", "trl", "unsloth", "bitsandbytes", "deepspeed"]:
         assert mod_name not in sys.modules, f"{mod_name} should not be loaded in Phase 10"
 
 

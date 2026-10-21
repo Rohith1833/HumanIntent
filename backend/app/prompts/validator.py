@@ -51,7 +51,7 @@ CORE INTENT-PRESERVATION INVARIANTS:
 8. MISSING CONTEXT MUST NOT BE PROMOTED:
    Dimensions listed as missing_context in analysis must remain unspecified. The enhancer must NOT turn neutral missing context into mandatory requirements (e.g. forcing MongoDB, React, CSV, etc.) -> MISSING_CONTEXT_PROMOTED (ERROR) or INVENTED_TECHNOLOGY (ERROR).
 9. STRICT ANTI-INVENTION:
-   Do NOT invent unrequested technologies, frameworks, features, domain personas (faculty, doctor, teacher, student), demographics, pricing, product brands, or business assumptions -> INVENTED_REQUIREMENT / INVENTED_TECHNOLOGY / INVENTED_FEATURE (ERROR).
+   Do NOT invent unrequested technologies, frameworks, features, domain personas (faculty, doctor, teacher, learner), demographics, pricing, product brands, or business assumptions -> INVENTED_REQUIREMENT / INVENTED_TECHNOLOGY / INVENTED_FEATURE (ERROR).
 10. CLARIFICATION ANSWERS ARE AUTHORITATIVE:
     If clarification answers exist, they are user-provided ground truth. If contradicted -> CLARIFICATION_MISMATCH (ERROR).
 11. REASONABLE ASSUMPTIONS:
@@ -63,6 +63,7 @@ CORE INTENT-PRESERVATION INVARIANTS:
 14. INVENTED FUNCTIONAL PURPOSE:
     If the user's request specified only an artifact container (e.g. a bot, dashboard, document, presentation, tool, plan, app) without specifying its functional purpose or intended outcome, and no clarification answers provided it:
     The enhancer must NOT silently invent a specific business domain, workflow, or concrete application purpose (e.g. turning a generic bot into a customer support bot or a generic dashboard into a crypto tracker) -> INVENTED_REQUIREMENT / OBJECTIVE_DRIFT (ERROR).
+    NOTE: Generic terms describing the intrinsic technical medium (e.g. 'software development', 'programming', 'scripting', 'coding', 'data analysis', 'command-line tool') are natural execution media for technical/coding prompts, NOT unrequested technologies or invented business domains. Do NOT flag them as errors.
 
 SEVERITY RULES:
 - ERROR: Any fatal breach of user intent (objective drift, analysis objective drift, unsupported analysis requirements, missing requirement/subtask/constraint/quantity, invented technology/feature/purpose, contradicted constraint, promoted missing context). If any ERROR is present, is_valid MUST be False.
@@ -95,9 +96,14 @@ def build_validator_user_message(
 
     assumptions_flag = "ENABLED (minimal stated assumptions permitted, no fake mandatory requirements)" if allow_reasonable_assumptions else "DISABLED (strict preservation only)"
 
+    user_prompt_text = original_prompt.strip()
+    if len(original_prompt) > 3500 and hasattr(analysis, "grounding") and analysis.grounding and len(analysis.grounding.source_units) > 6:
+        units_repr = "\n".join(f"- {u}" for u in analysis.grounding.source_units)
+        user_prompt_text = f"AUTHORITATIVE SOURCE REQUIREMENTS & UNITS ({len(analysis.grounding.source_units)} units across decomposed chunks):\n{units_repr}"
+
     return (
         f"ORIGINAL USER REQUEST:\n"
-        f"{original_prompt}\n\n"
+        f"{user_prompt_text}\n\n"
         f"STRUCTURED INTENT ANALYSIS:\n"
         f"{analysis_json}\n\n"
         f"{clarification_section}"
@@ -164,7 +170,7 @@ def build_repair_user_message(
         f"2. Fix each reported error strictly (e.g. restore missing subtasks/requirements/quantities/constraints, remove invented technologies/features/personas/mandates, remove reintroduced rejected options).\n"
         f"3. Do NOT add unrelated new information or invent new features.\n"
         f"4. Address the downstream AI directly with clear structure.\n"
-        f"5. STRICT PURITY: Do NOT reference the validator, validation errors, or repair process in the enhanced prompt text itself. Never write 'According to the validator', 'Fixed validation issue', or 'Intent preservation'. Zero meta-commentary."
+        f"5. STRICT PURITY: Do NOT explain what was changed, removed, or fixed. Absolutely NO explanations, justification paragraphs, or conversational notes such as 'Note that I removed...', 'Note that I fixed...', or 'I have followed the repair rules'. Do NOT reference the validator, validation errors, or repair process in the prompt text itself. Zero meta-commentary."
         f"{assumptions_note}\n"
         f"</REPAIR_DIRECTIVE>"
     )

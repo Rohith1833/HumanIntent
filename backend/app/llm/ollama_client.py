@@ -38,9 +38,11 @@ class OllamaClient:
         model: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> None:
-        self.base_url = (base_url or settings.ollama_base_url).rstrip("/")
+        raw_url = (base_url or settings.ollama_base_url).rstrip("/")
+        self.base_url = raw_url.replace("://localhost:", "://127.0.0.1:") if "localhost" in raw_url else raw_url
         self.model = model or settings.ollama_model
         self.timeout = timeout or settings.ollama_timeout
+        self.last_call_metadata: Dict[str, Any] = {}
 
     async def check_health(self) -> bool:
         """Check if the local Ollama instance is reachable."""
@@ -84,20 +86,31 @@ class OllamaClient:
                 f"Failed to parse models list from Ollama response: {exc}"
             ) from exc
 
+
     async def chat(
         self,
         messages: List[Dict[str, str]],
         format: Optional[Union[str, Dict[str, Any]]] = None,
         model_override: Optional[str] = None,
+        num_predict: Optional[int] = None,
+        keep_alive: Optional[str] = None,
     ) -> str:
-        """Reusable low-level transport for Ollama chat completion API."""
+        """Reusable low-level transport for Ollama chat completion API with keep-alive and generation limits."""
         model_to_use = model_override or self.model
         url = f"{self.base_url}/api/chat"
+
+        options: Dict[str, Any] = {
+            "num_ctx": settings.context_window_size,
+        }
+        if num_predict is not None:
+            options["num_predict"] = num_predict
 
         payload: Dict[str, Any] = {
             "model": model_to_use,
             "messages": messages,
             "stream": False,
+            "keep_alive": keep_alive or getattr(settings, "ollama_keep_alive", "15m"),
+            "options": options,
         }
         if format:
             payload["format"] = format
@@ -139,6 +152,14 @@ class OllamaClient:
 
         try:
             data = response.json()
+            self.last_call_metadata = {
+                "prompt_tokens": data.get("prompt_eval_count"),
+                "generated_tokens": data.get("eval_count"),
+                "total_duration_ns": data.get("total_duration"),
+                "load_duration_ns": data.get("load_duration"),
+                "prompt_eval_duration_ns": data.get("prompt_eval_duration"),
+                "eval_duration_ns": data.get("eval_duration"),
+            }
             content = data.get("message", {}).get("content", "").strip()
             if not content:
                 raise OllamaResponseError("Ollama returned an empty response.")

@@ -1,14 +1,18 @@
+import inspect
 import logging
 import re
 from typing import Optional, Tuple
 from app.core.analyzer import PromptAnalyzer, prompt_analyzer
+from app.core.context_budget import context_budget_manager
 from app.core.scorer import PromptScorer, prompt_scorer
 from app.core.validator import PromptValidator, prompt_validator
-from app.llm.ollama_client import OllamaClient, ollama_client
+from app.llm.ollama_client import OllamaClient, ollama_client, OllamaTimeoutError
+from app.prompts.analyzer import ANALYZER_SYSTEM_PROMPT
 from app.prompts.enhancer import HUMANINTENT_SYSTEM_PROMPT, build_enhancer_user_message
 from app.prompts.validator import build_repair_user_message
 from app.schemas.analysis import ClarificationAnswer, PromptAnalysis
 from app.schemas.quality import PromptQualityReport
+from app.schemas.telemetry import StageTimer, StageTimingDiagnostic
 from app.schemas.validation import PromptValidation, ValidationIssue, ValidationSeverity
 from app.templates.base import BaseTemplate
 from app.templates.selector import get_template
@@ -26,6 +30,7 @@ class EnhanceResult(tuple):
     quality: Optional[PromptQualityReport]
     initial_enhanced_prompt: Optional[str]
     initial_validation: Optional[PromptValidation]
+    stage_timings: list[StageTimingDiagnostic]
 
     def __new__(
         cls,
@@ -36,6 +41,7 @@ class EnhanceResult(tuple):
         quality: Optional[PromptQualityReport] = None,
         initial_enhanced_prompt: Optional[str] = None,
         initial_validation: Optional[PromptValidation] = None,
+        stage_timings: Optional[list[StageTimingDiagnostic]] = None,
     ):
         instance = super().__new__(cls, (analysis, enhanced_prompt))
         instance.analysis = analysis
@@ -45,6 +51,7 @@ class EnhanceResult(tuple):
         instance.quality = quality
         instance.initial_enhanced_prompt = initial_enhanced_prompt
         instance.initial_validation = initial_validation
+        instance.stage_timings = stage_timings or []
         return instance
 
 
@@ -62,6 +69,22 @@ class PromptEnhancer:
         self.analyzer = analyzer or prompt_analyzer
         self.validator = validator
         self.scorer = scorer
+
+    async def _safe_chat(self, messages: list[dict], format: Optional[dict] = None, num_predict: Optional[int] = None) -> str:
+        try:
+            if num_predict is not None:
+                if format is not None:
+                    return await self.client.chat(messages=messages, format=format, num_predict=num_predict)
+                return await self.client.chat(messages=messages, num_predict=num_predict)
+            if format is not None:
+                return await self.client.chat(messages=messages, format=format)
+            return await self.client.chat(messages=messages)
+        except TypeError as e:
+            if "unexpected keyword argument" in str(e) or "num_predict" in str(e):
+                if format is not None:
+                    return await self.client.chat(messages=messages, format=format)
+                return await self.client.chat(messages=messages)
+            raise
 
     def _apply_anti_invention_safeguard(
         self,
@@ -176,7 +199,7 @@ class PromptEnhancer:
             (r"(?:college\s+|university\s+|school\s+)?teacher\b", "teacher"),
             (r"(?:college\s+|university\s+|school\s+)?professor\b", "professor"),
             (r"\badministrator\b", "administrator"),
-            (r"\bstudent\s+role\b", "student"),
+            (r"\blearner\s+role\b", "learner"),
             (r"\bdoctor\b", "doctor"),
             (r"\blawyer\b", "lawyer"),
             (r"\bnurse\b", "nurse"),
@@ -195,6 +218,13 @@ class PromptEnhancer:
                     text,
                 )
 
+        # Remove conversational repair/validation justification paragraphs (e.g., "Note that I removed the invented requirements...")
+        text = re.sub(
+            r"(?im)^\s*(?:Note\s+that\s+I|Please\s+note\s+that\s+I|I\s+(?:have\s+)?(?:removed|fixed|updated|adhered|followed|addressed|cleaned)|Per\s+the\s+repair|As\s+requested\s+in\s+the\s+repair|Following\s+the\s+validation)[^\n]*?(?:\n+|$)",
+            "",
+            text,
+        ).strip()
+
         # Self-referential implementation notes safeguard: Never output system notes or meta self-evaluations
         self_referential_patterns = [
             r"(?im)^\s*[-*•]?\s*(?:This\s+prompt\s+(?:follows|preserves|adheres\s+to|was\s+enhanced\s+by)[^\n]*\n?)",
@@ -202,6 +232,7 @@ class PromptEnhancer:
             r"(?im)^\s*[-*•]?\s*(?:HumanIntent\s+(?:has|preserves|system)[^\n]*\n?)",
             r"(?im)^\s*[-*•]?\s*(?:Intent\s+has\s+been\s+preserved[^\n]*\n?)",
             r"(?im)^\s*[-*•]?\s*(?:Guidelines\s+followed:[^\n]*\n?)",
+            r"(?im)^\s*(?:Note\s+that\s+I|Please\s+note\s+that\s+I|I\s+have\s+removed|I\s+removed\s+the|I\s+strictly\s+followed)[^\n]*\n?",
         ]
         for s_pat in self_referential_patterns:
             text = re.sub(s_pat, "", text).strip()
@@ -232,9 +263,19 @@ class PromptEnhancer:
         if analysis and any("tone" in p.lower() or any(w in p.lower() for w in ["professional", "formal", "friendly"]) for p in analysis.preferences):
             text = re.sub(r"(?im)^\s*[-*•]\s*(?:(?:the\s+)?(?:email\s+|writing\s+|message\s+)?tone[^\n]*\n?)", "", text)
 
-        # Analysis preservation: Ensure non-empty preferences and missing context are not lost
+        # Analysis preservation: Ensure non-empty constraints, preferences, and missing context are not lost
         is_mock_result = text.strip() == "Enhanced prompt result"
         if not is_mock_result:
+            if analysis and analysis.constraints and "constraints" not in text.lower() and not any(c.lower() in text.lower() for c in analysis.constraints):
+                constraint_bullets = "\n".join(f"- {c}" for c in analysis.constraints)
+                constraint_section = f"\n\nCONSTRAINTS\n{constraint_bullets}"
+                if re.search(r"(?im)^(?:\*{1,2}|#{1,4}\s*)?UNSPECIFIED DETAILS", text):
+                    text = re.sub(r"(?im)(^(?:\*{1,2}|#{1,4}\s*)?UNSPECIFIED DETAILS)", f"{constraint_section}\n\n\\1", text, count=1)
+                elif re.search(r"(?im)^(?:\*{1,2}|#{1,4}\s*)?OUTPUT(?:\s+EXPECTATIONS)?:?", text):
+                    text = re.sub(r"(?im)(^(?:\*{1,2}|#{1,4}\s*)?OUTPUT(?:\s+EXPECTATIONS)?:?)", f"{constraint_section}\n\n\\1", text, count=1)
+                else:
+                    text = f"{text}{constraint_section}"
+
             if analysis and analysis.preferences and "preferences" not in text.lower() and not any(p.lower() in text.lower() for p in analysis.preferences):
                 pref_bullets = "\n".join(f"- {p}" for p in analysis.preferences)
                 pref_section = f"\n\nPREFERENCES\n{pref_bullets}"
@@ -249,9 +290,7 @@ class PromptEnhancer:
                 missing_bullets = "\n".join(f"- {m}" for m in analysis.missing_context)
                 unspecified_section = (
                     f"\n\nUNSPECIFIED DETAILS\n"
-                    f"The user has not specified:\n"
-                    f"{missing_bullets}\n\n"
-                    f"Do not assume these details without confirmation. Ask for clarification if needed."
+                    f"{missing_bullets}"
                 )
                 if re.search(r"(?im)^(?:\*{1,2}|#{1,4}\s*)?OUTPUT(?:\s+EXPECTATIONS)?:?", text):
                     text = re.sub(r"(?im)(^(?:\*{1,2}|#{1,4}\s*)?OUTPUT(?:\s+EXPECTATIONS)?:?)", f"{unspecified_section}\n\n\\1", text, count=1)
@@ -266,8 +305,20 @@ class PromptEnhancer:
         ).strip()
 
         # Remove trailing conversational postamble notes (e.g., "Note: I've followed the guidelines...")
-        postamble_pattern = r"(?im)\n+\s*(?:Note|P\.S\.|Please note|I hope this helps)[^\n]*:\s*[\s\S]*$"
+        postamble_pattern = r"(?im)\n+\s*(?:Note|P\.S\.|Please note|I hope this helps)\b[^\n]*?(?:that\s+I|:\s*)[\s\S]*$"
         text = re.sub(postamble_pattern, "", text).strip()
+
+        # Filter out any internal control text lines that leaked into enhanced prompt
+        from app.core.instruction_boundary import detect_control_text
+        cleaned_final_lines = []
+        for line in text.split("\n"):
+            line_str = line.strip()
+            if line_str:
+                is_control, _ = detect_control_text(line_str, user_prompt)
+                if is_control:
+                    continue
+            cleaned_final_lines.append(line)
+        text = "\n".join(cleaned_final_lines).strip()
 
         # Fix malformed nesting where OBJECTIVE: appears under UNSPECIFIED DETAILS
         if re.search(r"(?im)UNSPECIFIED DETAILS:?\s*\n+OBJECTIVE:", text):
@@ -285,11 +336,15 @@ class PromptEnhancer:
             text = re.sub(r"(?im)^.*bring the user's idea to life with.*$\n?", "", text)
 
         # Strip section headers that have no content beneath them (e.g. "OUTPUT EXPECTATIONS:\s*$" or followed immediately by another section)
-        empty_header_pattern = r"(?m)^\s*(?:\*{1,2}|#{1,4}\s*)?(?:OUTPUT\s+EXPECTATIONS|OUTPUT|CORE\s+REQUIREMENTS|EXPLICIT\s+REQUIREMENTS|PREFERENCES|CONSTRAINTS|UNSPECIFIED\s+DETAILS)(?:\*{1,2})?:?\s*(?=(?:\n+\s*(?:\*{1,2}|#{1,4}\s*)?[A-Z\s&/]+(?:\*{1,2})?:?|\Z))"
+        empty_header_pattern = r"(?m)^\s*(?:\*{1,2}|#{1,4}\s*)?(?:OUTPUT\s+EXPECTATIONS|OUTPUT|CORE\s+REQUIREMENTS|EXPLICIT\s+REQUIREMENTS|PREFERENCES|CONSTRAINTS|UNSPECIFIED\s+DETAILS)(?:\*{1,2})?:?\s*(?=(?:\n+\s*(?:\*{1,2}|#{1,4}\s*)?[A-Z\s&/]{3,}(?:\*{1,2})?:?\s*$|\Z))"
         text = re.sub(empty_header_pattern, "", text).strip()
 
-        # Strip any accidental structured tag echoes
-        text = re.sub(r"</?(?:AUTHORITATIVE_USER_REQUEST|ORIGINAL_USER_REQUEST|STRUCTURED_INTENT_ANALYSIS|CATEGORY_TEMPLATE_GUIDANCE|ENHANCEMENT_DIRECTIVE|REPAIR_DIRECTIVE|PREVIOUS_ENHANCED_PROMPT_FAILED_VALIDATION|VALIDATION_ERRORS_TO_FIX)>", "", text).strip()
+        # Strip any accidental structured tag echoes or system directives
+        text = re.sub(r"(?is)<(?:STRUCTURED_INTENT_ANALYSIS|CATEGORY_TEMPLATE_GUIDANCE|ENHANCEMENT_DIRECTIVE|REPAIR_DIRECTIVE|PREVIOUS_ENHANCED_PROMPT_FAILED_VALIDATION|VALIDATION_ERRORS_TO_FIX|USER_CLARIFICATIONS|ANALYSIS_DIRECTIVE|SCHEMA_REPAIR_DIRECTIVE)>.*?</(?:STRUCTURED_INTENT_ANALYSIS|CATEGORY_TEMPLATE_GUIDANCE|ENHANCEMENT_DIRECTIVE|REPAIR_DIRECTIVE|PREVIOUS_ENHANCED_PROMPT_FAILED_VALIDATION|VALIDATION_ERRORS_TO_FIX|USER_CLARIFICATIONS|ANALYSIS_DIRECTIVE|SCHEMA_REPAIR_DIRECTIVE)>", "", text).strip()
+        text = re.sub(r"</?(?:AUTHORITATIVE_USER_REQUEST|ORIGINAL_USER_REQUEST|STRUCTURED_INTENT_ANALYSIS|CATEGORY_TEMPLATE_GUIDANCE|ENHANCEMENT_DIRECTIVE|REPAIR_DIRECTIVE|PREVIOUS_ENHANCED_PROMPT_FAILED_VALIDATION|VALIDATION_ERRORS_TO_FIX|USER_CLARIFICATIONS|ANALYSIS_DIRECTIVE|SCHEMA_REPAIR_DIRECTIVE)>", "", text).strip()
+        text = re.sub(r"(?im)\bDo\s+not\s+assume\s+these\s+details\s+without\s+confirmation\b[^\n]*", "", text).strip()
+        text = re.sub(r"(?im)\bAsk\s+for\s+clarification\s+if\s+needed\b[^\n]*", "", text).strip()
+        text = re.sub(r"(?im)\bHumanIntent\b", "", text).strip()
 
         # Collapse excessive newlines
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
@@ -318,7 +373,7 @@ class PromptEnhancer:
             {"role": "system", "content": HUMANINTENT_SYSTEM_PROMPT},
             {"role": "user", "content": repair_content},
         ]
-        raw_repaired = await self.client.chat(messages=messages)
+        raw_repaired = await self._safe_chat(messages=messages, num_predict=1500)
         return self._clean_enhanced_output(raw_repaired, analysis, user_prompt)
 
     async def enhance(
@@ -330,34 +385,61 @@ class PromptEnhancer:
         allow_reasonable_assumptions: bool = False,
         validate: bool = True,
     ) -> EnhanceResult:
-        """Run analysis (if not already provided) and enhance the prompt preserving user intent."""
+        """Run analysis (if not already provided) and enhance the prompt preserving user intent with per-stage timing."""
+        timings: list[StageTimingDiagnostic] = []
+
+        # Stage 1: Context Budget Check
+        t_budget = StageTimer("context_budget_check")
+        budget_report = context_budget_manager.check_stage_budget("analyzer", ANALYZER_SYSTEM_PROMPT, user_prompt)
+        timings.append(t_budget.complete(llm_called=False))
+
+        # Stage 2: Analyzer
+        t_analyzer = StageTimer("analyzer", self.client)
         analysis = existing_analysis
-        if analysis is None:
-            if clarification_answers or allow_reasonable_assumptions:
-                analysis = await self.analyzer.analyze(
-                    user_prompt,
-                    clarification_answers=clarification_answers,
-                    allow_reasonable_assumptions=allow_reasonable_assumptions,
-                )
+        try:
+            if analysis is None:
+                if clarification_answers or allow_reasonable_assumptions:
+                    analysis = await self.analyzer.analyze(
+                        user_prompt,
+                        clarification_answers=clarification_answers,
+                        allow_reasonable_assumptions=allow_reasonable_assumptions,
+                    )
+                else:
+                    analysis = await self.analyzer.analyze(user_prompt)
+                llm_used = (getattr(analysis, "analysis_path", "llm") == "llm")
+                timings.append(t_analyzer.complete(llm_called=llm_used))
             else:
-                analysis = await self.analyzer.analyze(user_prompt)
-        else:
-            # If caller supplied existing_analysis, ensure its grounding is validated against authoritative user input
-            if not hasattr(analysis, "grounding") or not analysis.grounding or not analysis.grounding.evidence:
-                grounding = self.analyzer.check_analysis_grounding(analysis, user_prompt, clarification_answers)
-                analysis.grounding = grounding
+                timings.append(t_analyzer.complete(llm_called=False))
+        except OllamaTimeoutError:
+            timings.append(t_analyzer.complete(llm_called=True, status_code="ANALYZER_TIMEOUT"))
+            raise
 
-        # Source Grounding Gate:
-        # If structured analysis failed grounding, do NOT proceed to enhancement, validation, or scoring.
-        if hasattr(analysis, "grounding") and analysis.grounding and not analysis.grounding.is_grounded:
+        # Stage 3: Analysis Grounding Gate
+        t_ground = StageTimer("analysis_grounding")
+        if not hasattr(analysis, "grounding") or analysis.grounding is None:
+            grounding = self.analyzer.check_analysis_grounding(analysis, user_prompt, clarification_answers)
+            if inspect.isawaitable(grounding):
+                grounding = await grounding
+            analysis.grounding = grounding
+        elif inspect.isawaitable(analysis.grounding):
+            analysis.grounding = await analysis.grounding
+        timings.append(t_ground.complete(llm_called=False))
+
+        is_grounded = True
+        if hasattr(analysis, "grounding") and analysis.grounding is not None:
+            is_grounded = bool(getattr(analysis.grounding, "is_grounded", True))
+
+        if not is_grounded:
             logger.warning("Enhancement aborted: analysis grounding failed.")
-            return EnhanceResult(analysis, "", validation=None, repair_attempted=False, quality=None)
+            return EnhanceResult(analysis, "", validation=None, repair_attempted=False, quality=None, stage_timings=timings)
 
-        # Ambiguity / Clarification Gate:
-        # If critical ambiguity requires clarification and reasonable assumptions was not selected,
-        # DO NOT call the enhancement model (zero enhancer LLM calls). Return early with empty enhanced text.
-        if analysis.ambiguity.needs_clarification and not allow_reasonable_assumptions:
-            return EnhanceResult(analysis, "", validation=None, repair_attempted=False, quality=None)
+        # Stage 4: Ambiguity / Clarification Gate
+        t_amb = StageTimer("ambiguity_gate")
+        needs_clarification = bool(analysis.ambiguity.needs_clarification and not allow_reasonable_assumptions)
+        timings.append(t_amb.complete(llm_called=False))
+
+        if needs_clarification:
+            return EnhanceResult(analysis, "", validation=None, repair_attempted=False, quality=None, stage_timings=timings)
 
         # Deterministically select category template (O(1), zero LLM calls)
         selected_template = template or get_template(analysis.classification.category)
@@ -374,28 +456,43 @@ class PromptEnhancer:
             {"role": "user", "content": user_content},
         ]
 
-        raw_enhanced_text = await self.client.chat(messages=messages)
-        cleaned_enhanced_text = self._clean_enhanced_output(raw_enhanced_text, analysis, user_prompt)
+        # Stage 5: Enhancer
+        t_enh = StageTimer("enhancer", self.client)
+        try:
+            raw_enhanced_text = await self._safe_chat(messages=messages, num_predict=1500)
+            cleaned_enhanced_text = self._clean_enhanced_output(raw_enhanced_text, analysis, user_prompt)
+            timings.append(t_enh.complete(llm_called=True))
+        except OllamaTimeoutError:
+            timings.append(t_enh.complete(llm_called=True, status_code="ENHANCER_TIMEOUT"))
+            raise
 
-        # Intent-Preservation Validation & Controlled 1-attempt repair:
+        # Stage 6: Intent-Preservation Validation & Controlled 1-attempt repair:
         if validate and self.validator is not None:
-            validation = await self.validator.validate(
-                original_prompt=user_prompt,
-                analysis=analysis,
-                enhanced_prompt=cleaned_enhanced_text,
-                clarification_answers=clarification_answers,
-                allow_reasonable_assumptions=allow_reasonable_assumptions,
-            )
+            t_val = StageTimer("validator", self.client)
+            try:
+                validation = await self.validator.validate(
+                    original_prompt=user_prompt,
+                    analysis=analysis,
+                    enhanced_prompt=cleaned_enhanced_text,
+                    clarification_answers=clarification_answers,
+                    allow_reasonable_assumptions=allow_reasonable_assumptions,
+                )
+                timings.append(t_val.complete(llm_called=True))
+            except OllamaTimeoutError:
+                timings.append(t_val.complete(llm_called=True, status_code="VALIDATOR_TIMEOUT"))
+                raise
 
             if validation.is_valid and getattr(getattr(analysis, "grounding", None), "is_grounded", True):
                 quality_report: Optional[PromptQualityReport] = None
                 if self.scorer is not None:
+                    t_score = StageTimer("scorer", self.scorer.client if self.scorer else self.client)
                     quality_report = await self.scorer.score(
                         original_prompt=user_prompt,
                         analysis=analysis,
                         enhanced_prompt=cleaned_enhanced_text,
                         validation=validation,
                     )
+                    timings.append(t_score.complete(llm_called=True))
                 return EnhanceResult(
                     analysis,
                     cleaned_enhanced_text,
@@ -404,40 +501,56 @@ class PromptEnhancer:
                     quality=quality_report,
                     initial_enhanced_prompt=cleaned_enhanced_text,
                     initial_validation=validation,
+                    stage_timings=timings,
                 )
 
             # Validation failed: run AT MOST ONE controlled repair attempt
             errors = [i for i in validation.issues if i.severity == ValidationSeverity.ERROR]
             logger.info("Validation failed with %d error(s). Initiating repair attempt.", len(errors))
 
-            cleaned_repaired_text = await self.repair(
-                user_prompt=user_prompt,
-                analysis=analysis,
-                previous_enhanced_prompt=cleaned_enhanced_text,
-                errors=errors,
-                template=selected_template,
-                allow_reasonable_assumptions=allow_reasonable_assumptions,
-            )
+            # Stage 7: Enhancement Repair
+            t_rep = StageTimer("enhancement_repair", self.client)
+            try:
+                cleaned_repaired_text = await self.repair(
+                    user_prompt=user_prompt,
+                    analysis=analysis,
+                    previous_enhanced_prompt=cleaned_enhanced_text,
+                    errors=errors,
+                    template=selected_template,
+                    allow_reasonable_assumptions=allow_reasonable_assumptions,
+                )
+                timings.append(t_rep.complete(llm_called=True, repair_reason=f"{len(errors)} error(s): {[e.type.value for e in errors[:3]]}"))
+            except OllamaTimeoutError:
+                timings.append(t_rep.complete(llm_called=True, status_code="ENHANCER_TIMEOUT"))
+                raise
 
-            # Re-validate repaired prompt
-            revalidation = await self.validator.validate(
-                original_prompt=user_prompt,
-                analysis=analysis,
-                enhanced_prompt=cleaned_repaired_text,
-                clarification_answers=clarification_answers,
-                allow_reasonable_assumptions=allow_reasonable_assumptions,
-            )
+            # Stage 8: Revalidation
+            t_reval = StageTimer("revalidation", self.client)
+            try:
+                revalidation = await self.validator.validate(
+                    original_prompt=user_prompt,
+                    analysis=analysis,
+                    enhanced_prompt=cleaned_repaired_text,
+                    clarification_answers=clarification_answers,
+                    allow_reasonable_assumptions=allow_reasonable_assumptions,
+                )
+                timings.append(t_reval.complete(llm_called=True))
+            except OllamaTimeoutError:
+                timings.append(t_reval.complete(llm_called=True, status_code="VALIDATOR_TIMEOUT"))
+                raise
 
             quality_report = None
             if revalidation.is_valid and getattr(getattr(analysis, "grounding", None), "is_grounded", True):
                 logger.info("Repair validation passed successfully.")
                 if self.scorer is not None:
+                    t_score = StageTimer("scorer", self.scorer.client if self.scorer else self.client)
                     quality_report = await self.scorer.score(
                         original_prompt=user_prompt,
                         analysis=analysis,
                         enhanced_prompt=cleaned_repaired_text,
                         validation=revalidation,
                     )
+                    timings.append(t_score.complete(llm_called=True))
             else:
                 logger.warning(
                     "Repair validation failed (%d error(s) remain).",
@@ -452,6 +565,7 @@ class PromptEnhancer:
                 quality=quality_report,
                 initial_enhanced_prompt=cleaned_enhanced_text,
                 initial_validation=validation,
+                stage_timings=timings,
             )
 
         return EnhanceResult(
@@ -462,6 +576,7 @@ class PromptEnhancer:
             quality=None,
             initial_enhanced_prompt=cleaned_enhanced_text,
             initial_validation=None,
+            stage_timings=timings,
         )
 
 

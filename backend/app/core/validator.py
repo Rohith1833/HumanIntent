@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from app.core.intent_anchor import extract_intent_anchor
 from app.core.instruction_boundary import scan_enhanced_prompt_contamination
+from app.core.source_coverage import extract_source_semantic_units, is_semantic_unit_covered
 from app.llm.ollama_client import OllamaResponseError, ollama_client
 from app.prompts.validator import VALIDATOR_SYSTEM_PROMPT, build_validator_user_message
 from app.schemas.analysis import ActionFamily, ClarificationAnswer, IntentAnchor, PromptAnalysis
@@ -135,7 +136,11 @@ class PromptValidator:
             r"\b(\d+)\s+([a-zA-Z]{3,})\b",
             r"\b(?:under|maximum|max|at most|up to|limit\s+to)\s+(\d+)\s+([a-zA-Z]{3,})\b",
         ]
-        original_quantities: dict[str, str] = {}
+        quantity_patterns = [
+            r"\b(\d+)\s+([a-zA-Z]{3,})\b",
+            r"\b(?:under|maximum|max|at most|up to|limit\s+to)\s+(\d+)\s+([a-zA-Z]{3,})\b",
+        ]
+        requested_quantities: dict[str, set[str]] = {}
         for pattern in quantity_patterns:
             for match in re.finditer(pattern, original_lower):
                 num, noun = match.groups()
@@ -143,9 +148,9 @@ class PromptValidator:
                 if int(num) > 1900 and int(num) < 2100:
                     continue
                 noun_singular = noun.rstrip("s")
-                original_quantities[noun_singular] = num
+                requested_quantities.setdefault(noun_singular, set()).add(num)
 
-        # Also check quantities in explicit_requirements
+        # Also check quantities in explicit_requirements and constraints
         for req in analysis.explicit_requirements:
             for pattern in quantity_patterns:
                 for match in re.finditer(pattern, req.lower()):
@@ -153,28 +158,43 @@ class PromptValidator:
                     if int(num) > 1900 and int(num) < 2100:
                         continue
                     noun_singular = noun.rstrip("s")
-                    original_quantities[noun_singular] = num
+                    requested_quantities.setdefault(noun_singular, set()).add(num)
 
-        for noun_singular, num in original_quantities.items():
-            # Check if the enhanced prompt has a different number for this noun
+        for const in analysis.constraints:
+            for pattern in quantity_patterns:
+                for match in re.finditer(pattern, const.lower()):
+                    num, noun = match.groups()
+                    if int(num) > 1900 and int(num) < 2100:
+                        continue
+                    noun_singular = noun.rstrip("s")
+                    requested_quantities.setdefault(noun_singular, set()).add(num)
+
+        for noun_singular, allowed_nums in requested_quantities.items():
+            # Check if the enhanced prompt has an unrequested number for this noun
             enhanced_noun_matches = re.findall(
                 rf"\b(\d+)\s+{re.escape(noun_singular)}s?\b", enhanced_lower
             )
             if enhanced_noun_matches:
                 for enh_num in enhanced_noun_matches:
-                    if enh_num != num:
+                    if enh_num not in allowed_nums:
                         issues.append(
                             ValidationIssue(
                                 type=ValidationIssueType.QUANTITY_MISMATCH,
                                 severity=ValidationSeverity.ERROR,
-                                message=f"Explicit quantity mismatch for '{noun_singular}': requested {num}, but enhanced prompt specifies {enh_num}.",
-                                evidence=f"Requested: {num} {noun_singular}s | Found: {enh_num} {noun_singular}s",
+                                message=f"Explicit quantity mismatch for '{noun_singular}': requested {allowed_nums}, but enhanced prompt specifies {enh_num}.",
+                                evidence=f"Requested: {allowed_nums} {noun_singular}s | Found: {enh_num} {noun_singular}s",
                             )
                         )
                         break
 
         # 4. Negative constraints contradiction
         # Extract negative constraints from analysis.constraints and prompt
+        IDIOMATIC_WORDS = {
+            "exception", "fail", "delay", "doubt", "hesitation", "issue", "issues",
+            "limitation", "restrictions", "restriction", "interruption", "downtime",
+            "loss", "prejudice", "regard", "any", "a", "an", "the", "it", "problem",
+            "other", "more", "less",
+        }
         negative_patterns = [
             r"\b(?:do\s+not\s+use|don't\s+use|avoid|without|never\s+use|no)\s+([a-zA-Z0-9_\-\.\+]+)\b",
         ]
@@ -184,13 +204,13 @@ class PromptValidator:
             for pat in negative_patterns:
                 for match in re.finditer(pat, c_lower):
                     item = match.group(1).strip()
-                    if len(item) > 2 and item not in {"any", "the", "a", "an", "other"}:
+                    if len(item) > 2 and item not in IDIOMATIC_WORDS:
                         forbidden_items.add(item)
 
         for pat in negative_patterns:
             for match in re.finditer(pat, original_lower):
                 item = match.group(1).strip()
-                if len(item) > 2 and item not in {"any", "the", "a", "an", "other"}:
+                if len(item) > 2 and item not in IDIOMATIC_WORDS:
                     forbidden_items.add(item)
 
         for item in forbidden_items:
@@ -250,13 +270,31 @@ class PromptValidator:
         if clarification_answers:
             user_corpus += " " + " ".join(ca.answer.lower() for ca in clarification_answers if ca.answer)
 
-        # 6a. Check if analysis itself has ungrounded assertions flag
+        # 6a. Direct authoritative source-to-enhancement requirement verification
+        source_units = (
+            analysis.grounding.source_units
+            if (hasattr(analysis, "grounding") and analysis.grounding and analysis.grounding.source_units)
+            else extract_source_semantic_units(original_prompt, clarification_answers)
+        )
+        if len(source_units) >= 2:
+            for unit in source_units:
+                if not is_semantic_unit_covered(unit, enhanced_lower):
+                    issues.append(
+                        ValidationIssue(
+                            type=ValidationIssueType.SOURCE_REQUIREMENT_DROPPED,
+                            severity=ValidationSeverity.ERROR,
+                            message=f"Explicit source requirement '{unit}' was omitted from enhanced prompt.",
+                            evidence=f"Authoritative source requirement: {unit}",
+                        )
+                    )
+
+        # 6b. Check if analysis itself has ungrounded assertions flag
         if hasattr(analysis, "grounding") and analysis.grounding and not analysis.grounding.is_grounded:
             issues.append(
                 ValidationIssue(
                     type=ValidationIssueType.ANALYSIS_GROUNDING_FAILURE,
                     severity=ValidationSeverity.ERROR,
-                    message=f"Structured analysis contains ungrounded assertions: {', '.join(analysis.grounding.unsupported_items)}",
+                    message=f"Structured analysis contains ungrounded assertions or omitted source requirements: {', '.join(analysis.grounding.unsupported_items)}",
                     evidence=str(analysis.grounding.unsupported_items),
                 )
             )
@@ -455,7 +493,7 @@ class PromptValidator:
         ]
 
         # ATTEMPT 1: Primary validation call using native JSON schema
-        raw_output = await self.client.chat(messages=messages, format=schema)
+        raw_output = await self.client.chat(messages=messages, format=schema, num_predict=600)
         llm_validation, issue, exc = self._parse_and_validate(raw_output)
 
         # If Attempt 1 failed, trigger controlled recovery (MAXIMUM 1 RETRY)
@@ -477,7 +515,7 @@ class PromptValidator:
                     ),
                 },
             ]
-            raw_repair_output = await self.client.chat(messages=repair_messages, format=schema)
+            raw_repair_output = await self.client.chat(messages=repair_messages, format=schema, num_predict=600)
             llm_validation, repair_issue, repair_exc = self._parse_and_validate(raw_repair_output)
 
             if llm_validation is None:
@@ -495,6 +533,15 @@ class PromptValidator:
         }
 
         for issue in llm_validation.issues:
+            # Filter spurious issues that flag intrinsic technical medium as an unrequested technology or business domain
+            msg_lower = (issue.message or "").lower()
+            ev_lower = (issue.evidence or "").lower()
+            combined_text = f"{msg_lower} {ev_lower}"
+            if any(term in combined_text for term in ["'software development'", "software development", "'programming'", "'scripting'", "'coding'"]):
+                if any(w in combined_text for w in ["unrequested technology", "business domain", "domain invention"]):
+                    logger.info("Filtered spurious validator issue on generic medium: %s", issue.message)
+                    continue
+
             key = f"{issue.type.value}:{issue.message.lower()[:30]}"
             if key not in seen_keys:
                 combined_issues.append(issue)

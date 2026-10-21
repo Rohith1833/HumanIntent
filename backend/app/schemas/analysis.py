@@ -238,6 +238,14 @@ class AnalysisGrounding(BaseModel):
         default_factory=list,
         description="Items asserted in analysis that lack grounding in authoritative user input.",
     )
+    source_units: list[str] = Field(
+        default_factory=list,
+        description="Atomic semantic request units extracted from authoritative user input.",
+    )
+    missing_source_units: list[str] = Field(
+        default_factory=list,
+        description="Authoritative source request units that were omitted from structured analysis.",
+    )
 
 
 class AmbiguityAssessment(BaseModel):
@@ -387,6 +395,10 @@ class PromptAnalysis(BaseModel):
     raw_category: Optional[str] = Field(
         default=None,
         description="Raw model classification before consistency gates.",
+    )
+    analysis_path: Optional[str] = Field(
+        default="llm",
+        description="Execution path used for analysis: deterministic_fast | semantic_fast | llm",
     )
 
     @model_validator(mode="before")

@@ -11,7 +11,7 @@ class EducationTemplate(BaseTemplate):
     recommended_sections = [
         "TOPIC",
         "LEARNING OBJECTIVE",
-        "STUDENT / AUDIENCE CONTEXT",
+        "LEARNER / AUDIENCE CONTEXT",
         "EXPLANATION STYLE",
         "EXAMPLES",
         "OUTPUT FORMAT",

@@ -62,11 +62,16 @@ class EnhancementSessionRepository:
             existing = self.get_session(session_id)
             if existing is not None:
                 # Existing session: original_prompt is authoritative and preserved!
-                existing.updated_at = _utc_now()
-                if model:
-                    existing.model = model
-                existing.allow_reasonable_assumptions = allow_reasonable_assumptions
-                return existing, False
+                # Only reuse if the incoming prompt matches the session's prompt to avoid contamination.
+                if existing.original_prompt.strip().lower() == original_prompt.strip().lower():
+                    existing.updated_at = _utc_now()
+                    if model:
+                        existing.model = model
+                    existing.allow_reasonable_assumptions = allow_reasonable_assumptions
+                    return existing, False
+                else:
+                    # Prompt mismatch: allocate a fresh isolated session for the new request
+                    session_id = None
 
         # Create new session
         new_id = session_id if session_id else str(uuid.uuid4())

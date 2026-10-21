@@ -1,5 +1,4 @@
-"""Prompts and rubrics for Phase 7 Explainable Prompt Quality Scoring."""
-
+import json
 from app.schemas.analysis import PromptAnalysis
 
 SCORER_SYSTEM_PROMPT = """You are HumanIntent Prompt Quality Scorer, an objective evaluation system for AI prompt quality.
@@ -13,7 +12,7 @@ STRICT CONSTRAINTS:
 4. You do NOT invent missing user information.
 5. You do NOT produce an overall score (the system computes overall score deterministically).
 6. Every dimensional score MUST be an integer between 0 and 100 that is an increment of 5 (e.g. 60, 65, 70, 75, 80, 85, 90, 95, 100).
-7. Keep each 'reason' concise and concrete (1-2 sentences referencing the specific rubric).
+7. Keep each 'reason' concise and concrete (exactly 1 short sentence, under 15 words, referencing the specific rubric).
 
 EXPLICIT DIMENSION RUBRICS:
 
@@ -64,7 +63,19 @@ def build_scorer_user_message(
     enhanced_prompt: str,
 ) -> str:
     """Format the scoring input comparing original user request, structured analysis, and final enhanced prompt."""
-    analysis_json = analysis.model_dump_json(indent=2)
+    category_val = (
+        analysis.classification.category.value
+        if hasattr(analysis.classification.category, "value")
+        else str(analysis.classification.category)
+    )
+    core_analysis = {
+        "category": category_val,
+        "objective": analysis.objective,
+        "explicit_requirements": analysis.explicit_requirements,
+        "constraints": analysis.constraints,
+        "preferences": analysis.preferences,
+    }
+    analysis_json = json.dumps(core_analysis, indent=2)
     return (
         f"<ORIGINAL_USER_REQUEST>\n"
         f"{original_prompt.strip()}\n"

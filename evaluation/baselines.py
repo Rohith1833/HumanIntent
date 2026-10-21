@@ -207,151 +207,109 @@ async def execute_humanintent_baseline(
     Normal clear path: 1 + 1 + 1 + 1 = 4 LLM calls.
     Clarification path: 1 LLM call.
     """
-    enh = enhancer or PromptEnhancer(
-        client=ollama_client,
-        analyzer=prompt_analyzer,
-        validator=prompt_validator,
-        scorer=prompt_scorer,
-    )
+    enh = enhancer or prompt_enhancer
     overall_start = time.perf_counter()
 
-    analysis_calls = 1
-    enhancement_calls = 0
-    validation_calls = 0
-    scoring_calls = 0
-    analysis_repair_calls = 0
-    enhancement_repair_calls = 0
+    # Intercept analyzer repair attempts to record analysis_repair_calls
+    orig_repair_fn = enh.analyzer.repair_analysis
+    rep_count = [0]
 
-    analysis_latency_ms = 0.0
-    enhancement_latency_ms = 0.0
-    validation_latency_ms = 0.0
-    scoring_latency_ms = 0.0
-    repair_latency_ms = 0.0
+    async def _rep_hook(*args, **kwargs):
+        rep_count[0] += 1
+        return await orig_repair_fn(*args, **kwargs)
+
+    enh.analyzer.repair_analysis = _rep_hook
+
+    # Intercept NLI and Semantic Matcher to record per-case telemetry
+    from app.core.nli_matcher import nli_matcher
+    from app.core.semantic_matcher import semantic_matcher
+    from app.core.category_router import category_router
+    from app.core.intent_anchor import extract_intent_anchor
+
+    nli_counter = [0]
+    nli_latency_acc = [0.0]
+    orig_nli_predict = nli_matcher.predict
+
+    def _nli_hook(*args, **kwargs):
+        nli_counter[0] += 1
+        t_start = time.perf_counter()
+        res_nli = orig_nli_predict(*args, **kwargs)
+        nli_latency_acc[0] += (time.perf_counter() - t_start) * 1000.0
+        return res_nli
+
+    nli_matcher.predict = _nli_hook
+
+    sem_counter = [0]
+    orig_sem_sim = semantic_matcher.similarity
+
+    def _sem_hook(*args, **kwargs):
+        sem_counter[0] += 1
+        return orig_sem_sim(*args, **kwargs)
+
+    semantic_matcher.similarity = _sem_hook
+
+    # Pre-compute routing tier for telemetry
+    try:
+        anchor = extract_intent_anchor(case.user_prompt)
+        routing_info = category_router.route(case.user_prompt, anchor=anchor)
+        routing_tier = routing_info.tier
+        router_latency_ms = routing_info.latency_ms
+    except Exception:
+        routing_tier = "unknown"
+        router_latency_ms = 0.0
 
     try:
-        # Stage 1: Analyzer
-        t0 = time.perf_counter()
-        orig_repair_fn = enh.analyzer.repair_analysis
-        rep_count = [0]
-        async def _rep_hook(*args, **kwargs):
-            rep_count[0] += 1
-            return await orig_repair_fn(*args, **kwargs)
-        enh.analyzer.repair_analysis = _rep_hook
-        try:
-            analysis = await enh.analyzer.analyze(case.user_prompt)
-        finally:
-            enh.analyzer.repair_analysis = orig_repair_fn
-
-        analysis_latency_ms = (time.perf_counter() - t0) * 1000.0
-        if rep_count[0] > 0:
-            analysis_repair_calls = rep_count[0]
+        res = await enh.enhance(case.user_prompt)
+        analysis = res.analysis
+        enhanced_text = res.enhanced_prompt
+        validation = res.validation
+        quality_report = res.quality
+        timings = res.stage_timings or []
 
         clar_req = bool(analysis.ambiguity.needs_clarification)
-        clar_questions = analysis.ambiguity.clarification_questions if clar_req else []
+        raw_qs = getattr(analysis.ambiguity, "questions", getattr(analysis.ambiguity, "clarification_questions", []))
+        clar_questions = [q.question if hasattr(q, "question") else str(q) for q in (raw_qs or [])] if clar_req else []
 
-        grounded = True
-        if hasattr(analysis, "grounding") and analysis.grounding and not analysis.grounding.is_grounded:
-            grounded = False
+        val_passed = bool(validation.is_valid) if validation is not None else (True if clar_req else False)
+        q_score = (
+            float(quality_report.overall_score)
+            if quality_report
+            else (0.0 if clar_req else (85.0 if val_passed else 0.0))
+        )
 
-        enhanced_text = ""
-        validation = None
-        quality_report = None
-        val_passed = True
-        q_score = 0.0
-
-        # Stage 2: Clarification & Grounding Gates
-        if grounded and not clar_req:
-            # Stage 3: Enhancer Generation
-            selected_template = get_template(analysis.classification.category)
-            user_content = build_enhancer_user_message(
-                case.user_prompt,
-                analysis,
-                template=selected_template,
-                allow_reasonable_assumptions=False,
-            )
-            messages = [
-                {"role": "system", "content": HUMANINTENT_SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
-            ]
-
-            t1 = time.perf_counter()
-            raw_enhanced = await enh.client.chat(messages=messages)
-            enhanced_text = enh._clean_enhanced_output(raw_enhanced, analysis, case.user_prompt)
-            enhancement_latency_ms = (time.perf_counter() - t1) * 1000.0
-            enhancement_calls = 1
-
-            # Stage 4: Validator & Controlled 1-attempt repair
-            if enh.validator is not None:
-                t2 = time.perf_counter()
-                validation = await enh.validator.validate(
-                    original_prompt=case.user_prompt,
-                    analysis=analysis,
-                    enhanced_prompt=enhanced_text,
-                    allow_reasonable_assumptions=False,
-                )
-                validation_latency_ms = (time.perf_counter() - t2) * 1000.0
-                validation_calls = 1
-
-                if not validation.is_valid:
-                    # Repair attempt
-                    t_rep = time.perf_counter()
-                    errors = [i for i in validation.issues if i.severity == ValidationSeverity.ERROR]
-                    repaired_text = await enh.repair(
-                        user_prompt=case.user_prompt,
-                        analysis=analysis,
-                        previous_enhanced_prompt=enhanced_text,
-                        errors=errors,
-                        template=selected_template,
-                        allow_reasonable_assumptions=False,
-                    )
-                    enhancement_repair_calls = 1
-
-                    # Re-validate repaired prompt
-                    reval = await enh.validator.validate(
-                        original_prompt=case.user_prompt,
-                        analysis=analysis,
-                        enhanced_prompt=repaired_text,
-                        allow_reasonable_assumptions=False,
-                    )
-                    validation_calls += 1
-                    validation = reval
-                    enhanced_text = repaired_text
-                    repair_latency_ms = (time.perf_counter() - t_rep) * 1000.0
-
-                val_passed = validation.is_valid
-
-            # Stage 5: Scorer
-            if enh.scorer is not None:
-                t3 = time.perf_counter()
-                quality_report = await enh.scorer.score(
-                    original_prompt=case.user_prompt,
-                    analysis=analysis,
-                    enhanced_prompt=enhanced_text,
-                    validation=validation,
-                )
-                scoring_latency_ms = (time.perf_counter() - t3) * 1000.0
-                scoring_calls = 1
-                q_score = float(quality_report.overall_score) if quality_report else 85.0
-            else:
-                q_score = 85.0
-
-        elif clar_req:
-            q_score = 0.0
-            val_passed = True
-        else:
-            # Grounding failed
-            q_score = 0.0
-            val_passed = False
-
-        total_latency_ms = (time.perf_counter() - overall_start) * 1000.0
+        analysis_calls = sum(1 for t in timings if t.stage == "analyzer" and t.llm_called)
+        analysis_repair_calls = rep_count[0]
+        enhancement_calls = sum(1 for t in timings if t.stage == "enhancer" and t.llm_called)
+        val_stage_calls = sum(1 for t in timings if t.stage == "validator" and t.llm_called)
+        reval_stage_calls = sum(1 for t in timings if t.stage == "revalidation" and t.llm_called)
+        validation_calls = val_stage_calls + reval_stage_calls
+        enhancement_repair_calls = sum(1 for t in timings if t.stage == "enhancement_repair" and t.llm_called)
+        scoring_calls = sum(1 for t in timings if t.stage == "scorer" and t.llm_called)
         total_calls = (
             analysis_calls
+            + analysis_repair_calls
             + enhancement_calls
             + validation_calls
-            + scoring_calls
-            + analysis_repair_calls
             + enhancement_repair_calls
+            + scoring_calls
         )
+
+        analysis_latency_ms = sum(t.elapsed_ms for t in timings if t.stage == "analyzer")
+        enhancement_latency_ms = sum(t.elapsed_ms for t in timings if t.stage == "enhancer")
+        validation_latency_ms = sum(t.elapsed_ms for t in timings if t.stage in ("validator", "revalidation"))
+        scoring_latency_ms = sum(t.elapsed_ms for t in timings if t.stage == "scorer")
+        repair_latency_ms = sum(t.elapsed_ms for t in timings if t.stage in ("enhancement_repair", "revalidation"))
+        total_latency_ms = (time.perf_counter() - overall_start) * 1000.0
+
+        prompt_tokens = sum(t.prompt_tokens or 0 for t in timings)
+        generated_tokens = sum(t.generated_tokens or 0 for t in timings)
+        processing_mode = "long_input" if any("long_input" in (t.repair_reason or "") for t in timings) or len(case.user_prompt.split()) > 400 else "normal"
+
+        ana_path = getattr(analysis, "analysis_path", "llm")
+        if ana_path in ("deterministic_fast", "semantic_fast"):
+            analysis_path_type = "fast_path"
+        else:
+            analysis_path_type = "llm"
 
         return CasePrediction(
             case_id=case.case_id,
@@ -380,7 +338,19 @@ async def execute_humanintent_baseline(
             repair_latency_ms=round(repair_latency_ms, 2),
             raw_response={
                 "analysis": analysis.model_dump(),
-                "repair_attempted": bool(enhancement_repair_calls > 0),
+                "repair_attempted": res.repair_attempted,
+                "stage_timings": [t.model_dump() for t in timings],
+                "prompt_tokens": prompt_tokens,
+                "generated_tokens": generated_tokens,
+                "processing_mode": processing_mode,
+                "analysis_path": ana_path,
+                "analysis_path_type": analysis_path_type,
+                "category_routing_tier": routing_tier,
+                "router_latency_ms": round(router_latency_ms, 2),
+                "semantic_matcher_usage": sem_counter[0],
+                "nli_invocation_count": nli_counter[0],
+                "nli_latency_ms": round(nli_latency_acc[0], 2),
+                "revalidation_calls": reval_stage_calls,
             },
         )
     except Exception as e:
@@ -406,3 +376,7 @@ async def execute_humanintent_baseline(
             total_llm_calls=1,
             raw_response={"error": str(e)},
         )
+    finally:
+        enh.analyzer.repair_analysis = orig_repair_fn
+        nli_matcher.predict = orig_nli_predict
+        semantic_matcher.similarity = orig_sem_sim

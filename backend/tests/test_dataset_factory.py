@@ -634,3 +634,95 @@ def test_group_v_runtime_pipeline_unaffected():
     assert hasattr(prompt_analyzer, "analyze")
     assert hasattr(prompt_validator, "validate")
     assert hasattr(prompt_scorer, "score")
+
+
+# ==============================================================================
+# TEST GROUP W — SYNTHETIC GENERATOR HARDENING (PHASE 11)
+# ==============================================================================
+
+def test_group_w_generator_wrapper_canonicalization():
+    """Verify generator wrappers, narration, and fences are cleanly stripped."""
+    from dataset_factory.synthetic_generator import _canonicalize_generated_prompt
+
+    # 1. Narrations with quotes
+    t1 = 'Here is the generated prompt: "Create a priority queue in Python"'
+    assert _canonicalize_generated_prompt(t1) == "Create a priority queue in Python"
+
+    # 2. Realistic user prompt narration with newlines
+    t2 = "Here's a realistic user prompt reflecting the requested style:\n\nCan you fix my React hook?"
+    assert _canonicalize_generated_prompt(t2) == "Can you fix my React hook?"
+
+    # 3. Simple "Generated prompt:"
+    t3 = "Generated prompt: Write an essay about renewable energy"
+    assert _canonicalize_generated_prompt(t3) == "Write an essay about renewable energy"
+
+    # 4. Outer markdown fences
+    t4 = "```markdown\nExplain quantum computing simply\n```"
+    assert _canonicalize_generated_prompt(t4) == "Explain quantum computing simply"
+
+    # 5. Combined wrapper + fences + quotes
+    t5 = 'Here is the prompt:\n```\n"Build a REST API in Go"\n```'
+    assert _canonicalize_generated_prompt(t5) == "Build a REST API in Go"
+
+
+def test_group_w_legitimate_user_text_preserved():
+    """Verify legitimate user conversational text is NOT altered by canonicalizer."""
+    from dataset_factory.synthetic_generator import _canonicalize_generated_prompt
+
+    t1 = "Here is my code for binary search:\ndef bs(arr): pass"
+    assert _canonicalize_generated_prompt(t1) == t1
+
+    t2 = "Here is what I need: a rate limiter in Python with token bucket."
+    assert _canonicalize_generated_prompt(t2) == t2
+
+    t3 = "Prompt engineering is essential for LLM applications."
+    assert _canonicalize_generated_prompt(t3) == t3
+
+
+def test_group_w_self_correcting_generation_no_invented_technologies():
+    """Deterministic SELF_CORRECTING generation must not inject hardcoded MySQL/SQLite."""
+    from dataset_factory.synthetic_generator import SyntheticGenerator
+
+    gen = SyntheticGenerator()
+    seed = SeedIntent(
+        seed_id="gen_test_01",
+        category="WRITING",
+        intent="Draft a business proposal for a mobile app",
+        core_requirements=["executive summary", "budget breakdown"],
+    )
+
+    variant = gen.generate_deterministic_variant(seed, VariantType.SELF_CORRECTING)
+    prompt_low = variant.prompt.lower()
+    assert "mysql" not in prompt_low, "Must not inject MySQL into non-database task"
+    assert "sqlite" not in prompt_low, "Must not inject SQLite into non-database task"
+    assert "executive summary" in prompt_low
+
+
+def test_group_w_constrained_generation_no_invented_dependencies():
+    """Deterministic CONSTRAINED generation must not invent external-dependency restrictions when absent."""
+    from dataset_factory.synthetic_generator import SyntheticGenerator
+
+    gen = SyntheticGenerator()
+    seed = SeedIntent(
+        seed_id="gen_test_02",
+        category="EDUCATION",
+        intent="Explain the Doppler effect",
+        core_requirements=["sound wave analogy", "astronomical red-shift"],
+        optional_constraints=[],  # No external dependency constraint!
+    )
+
+    variant = gen.generate_deterministic_variant(seed, VariantType.CONSTRAINED)
+    prompt_low = variant.prompt.lower()
+    assert "external dependencies" not in prompt_low
+    assert "third-party" not in prompt_low
+    assert "sound wave analogy" in prompt_low
+
+
+def test_group_w_cache_salt_version_bump():
+    """Ensure generator cache key salt is bumped to v2 to invalidate contaminated caches."""
+    from dataset_factory.synthetic_generator import _cache_key
+
+    key_v1 = _cache_key("seed_001", "CLEAN", "llama3:latest", salt="v1")
+    key_default = _cache_key("seed_001", "CLEAN", "llama3:latest")
+
+    assert key_default != key_v1, "Default cache key must differ from v1 salt"

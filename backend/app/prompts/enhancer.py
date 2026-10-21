@@ -44,7 +44,7 @@ GLOBAL INVARIANTS:
 1. ROLE & PERSONAS:
    - Define a role ONLY IF safe and generic (e.g., "Act as an experienced Python developer", "Act as an expert researcher").
    - STRICT BAN ON INVENTED PERSONAS:
-     NEVER invent domain personas (e.g. "faculty member", "teacher", "professor", "doctor", "lawyer", "manager", "student", "administrator") based solely on domain context.
+     NEVER invent domain personas (e.g. "faculty member", "teacher", "professor", "doctor", "lawyer", "manager", "learner", "administrator") based solely on domain context.
      Unless the user explicitly requested that specific role, you must NEVER invent it.
 2. EXPLICIT REQUIREMENTS:
    - Include ONLY if explicit_requirements has items.
@@ -91,9 +91,14 @@ def build_enhancer_user_message(
             "or pre-select unrequested technologies."
         )
 
+    user_request_text = original_prompt.strip()
+    if len(original_prompt) > 3500 and hasattr(analysis, "grounding") and analysis.grounding and len(analysis.grounding.source_units) > 6:
+        source_repr = "\n".join(f"- {u}" for u in analysis.grounding.source_units)
+        user_request_text = f"AUTHORITATIVE SOURCE REQUIREMENTS & UNITS ({len(analysis.grounding.source_units)} units across decomposed chunks):\n{source_repr}"
+
     return (
         f"<AUTHORITATIVE_USER_REQUEST>\n"
-        f"{original_prompt.strip()}\n"
+        f"{user_request_text}\n"
         f"</AUTHORITATIVE_USER_REQUEST>\n\n"
         f"<STRUCTURED_INTENT_ANALYSIS>\n"
         f"{analysis_json}\n"
@@ -105,13 +110,14 @@ def build_enhancer_user_message(
         f"Rewrite this into a clean instruction prompt for another AI adhering to these rules:\n"
         f"1. Start immediately with the enhanced prompt. Zero conversational intro or label like 'Here is the enhanced prompt'.\n"
         f"2. Never use meta-instructions like 'Instruct the implementing AI:' or 'Tell the AI to:'. Address the downstream AI directly.\n"
-        f"3. State the primary OBJECTIVE. Never invent domain personas (e.g. 'faculty member', 'teacher', 'doctor', or 'student'). Use a safe generic role (e.g. 'Act as an experienced software developer') or omit the role entirely.\n"
+        f"3. State the primary OBJECTIVE. Never invent unrequested domain personas (e.g. 'faculty member', 'teacher', 'doctor', 'attorney'). Use a safe generic role (e.g. 'Act as an experienced software developer') or omit the role entirely.\n"
         f"4. List CORE / EXPLICIT REQUIREMENTS strictly matching what the user requested. If empty, OMIT the section entirely — do NOT output 'None specified'.\n"
-        f"5. If preferences has items: include them under 'PREFERENCES' (e.g. 'Keep the presentation engaging and cool'). Do NOT drop non-empty preferences!\n"
-        f"6. If missing_context has items: list them under 'UNSPECIFIED DETAILS' neutrally without candidate options or square brackets. Do NOT drop non-empty missing context! Do NOT list items already specified (e.g., if professional tone is in preferences, never list tone as unspecified). Do NOT invent technologies or specifications for any missing context (no SQLite, CSV, React, CLI, etc.).\n"
-        f"7. State directly: Do not assume specific technologies, databases, demographics, pricing, or features that were not provided. If an unspecified decision materially changes implementation, ask for clarification or state a minimal assumption before proceeding.\n"
-        f"8. STRICT ANTI-INVENTION: Do NOT invent extra features (pricing, brands, demographics, sizes, login, databases). Do NOT inject boilerplate non-functional requirements (responsive design, security, privacy) unless explicitly requested in the prompt.\n"
-        f"9. STRICT PURITY: Do NOT copy category template instructions, system names ('HumanIntent'), or schema field names into the enhanced prompt."
+        f"5. If constraints has items: include them under 'CONSTRAINTS' (e.g. negative boundaries, word counts, retention/deletion lifecycle policies, durations). Preserve all negative restrictions and lifecycle rules exactly. Do NOT drop constraints!\n"
+        f"6. If preferences has items: include them under 'PREFERENCES' (e.g. 'Keep the presentation engaging and cool'). Do NOT drop non-empty preferences!\n"
+        f"7. If missing_context has items: list them under 'UNSPECIFIED DETAILS' neutrally without candidate options or square brackets. Do NOT drop non-empty missing context! Do NOT list items already specified (e.g., if professional tone is in preferences, never list tone as unspecified). Do NOT invent technologies or specifications for any missing context (no SQLite, CSV, React, CLI, etc.).\n"
+        f"8. State directly: Do not assume specific technologies, databases, demographics, pricing, or features that were not provided. If an unspecified decision materially changes implementation, ask for clarification or state a minimal assumption before proceeding.\n"
+        f"9. STRICT ANTI-INVENTION: Do NOT invent extra features (pricing, brands, demographics, sizes, login, databases). Do NOT inject boilerplate non-functional requirements (responsive design, security, privacy) unless explicitly requested in the prompt.\n"
+        f"10. STRICT PURITY: Do NOT copy category template instructions, system names ('HumanIntent'), or schema field names into the enhanced prompt."
         f"{assumptions_note}\n"
         f"</ENHANCEMENT_DIRECTIVE>"
     )

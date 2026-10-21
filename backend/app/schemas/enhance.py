@@ -3,6 +3,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 from app.schemas.analysis import ClarificationAnswer, ClarificationQuestion, PromptAnalysis
 from app.schemas.quality import PromptQualityReport
+from app.schemas.telemetry import StageTimingDiagnostic
 from app.schemas.validation import PromptValidation
 
 
@@ -45,6 +46,9 @@ class EnhancedResponse(BaseModel):
     template: Optional[str] = None
     validation: Optional[PromptValidation] = None
     quality: Optional[PromptQualityReport] = None
+    processing_mode: str = Field(default="normal", description="Execution mode: 'normal' or 'long_input'.")
+    diagnostic_codes: list[str] = Field(default_factory=list, description="Diagnostic observation codes.")
+    stage_timings: list[StageTimingDiagnostic] = Field(default_factory=list, description="Per-stage latency and token telemetry.")
     history_saved: bool = True
 
 
@@ -54,6 +58,10 @@ class ClarificationRequiredResponse(BaseModel):
     original_prompt: str
     analysis: PromptAnalysis
     questions: list[ClarificationQuestion]
+    reason_codes: list[str] = Field(default_factory=list, description="Structured machine-readable reason codes.")
+    processing_mode: str = Field(default="normal", description="Execution mode: 'normal' or 'long_input'.")
+    diagnostic_codes: list[str] = Field(default_factory=list, description="Diagnostic observation codes.")
+    stage_timings: list[StageTimingDiagnostic] = Field(default_factory=list, description="Per-stage latency and token telemetry.")
     model: str
     history_saved: bool = True
 
@@ -64,6 +72,10 @@ class ValidationFailedResponse(BaseModel):
     original_prompt: str
     analysis: PromptAnalysis
     validation: PromptValidation
+    reason_codes: list[str] = Field(default_factory=list, description="Structured machine-readable reason codes.")
+    processing_mode: str = Field(default="normal", description="Execution mode: 'normal' or 'long_input'.")
+    diagnostic_codes: list[str] = Field(default_factory=list, description="Diagnostic observation codes.")
+    stage_timings: list[StageTimingDiagnostic] = Field(default_factory=list, description="Per-stage latency and token telemetry.")
     message: str = "HumanIntent could not produce a sufficiently faithful enhanced prompt after one repair attempt."
     model: str
     history_saved: bool = True
@@ -74,6 +86,10 @@ class AnalysisFailedResponse(BaseModel):
     session_id: UUID
     original_prompt: str
     analysis: PromptAnalysis
+    reason_codes: list[str] = Field(default_factory=list, description="Structured machine-readable reason codes.")
+    processing_mode: str = Field(default="normal", description="Execution mode: 'normal' or 'long_input'.")
+    diagnostic_codes: list[str] = Field(default_factory=list, description="Diagnostic observation codes.")
+    stage_timings: list[StageTimingDiagnostic] = Field(default_factory=list, description="Per-stage latency and token telemetry.")
     message: str = "HumanIntent could not verify that the analysis was grounded in your request."
     model: str
     history_saved: bool = True

@@ -6,6 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.core.analyzer import prompt_analyzer
 from app.core.config import settings
+from app.core.context_budget import (
+    LONG_INPUT_MODE,
+    NORMAL_CONTEXT_MODE,
+    ProcessingMode,
+    context_budget_manager,
+)
 from app.core.enhancer import prompt_enhancer
 from app.db.repositories.feedback import FeedbackRepository
 from app.db.repositories.sessions import EnhancementSessionRepository
@@ -39,7 +45,7 @@ from app.schemas.history import (
     HistorySummaryItem,
 )
 from app.schemas.quality import PromptQualityReport
-from app.schemas.validation import PromptValidation
+from app.schemas.validation import PromptValidation, ValidationSeverity
 from app.templates.selector import get_template
 
 logger = logging.getLogger("humanintent.api")
@@ -135,26 +141,36 @@ async def enhance_prompt(
     session_repo = EnhancementSessionRepository(db)
 
     # 1. Prepare session record if history is enabled
+    is_new_session = True
     if settings.history_enabled:
         try:
-            session, _ = session_repo.get_or_create_session(
+            session, is_new_session = session_repo.get_or_create_session(
                 session_id=session_id_str,
                 original_prompt=payload.prompt,
                 model=settings.ollama_model,
                 allow_reasonable_assumptions=payload.allow_reasonable_assumptions,
             )
             active_session_id = session.id
+            if session_id_str and is_new_session:
+                logger.warning(
+                    "Request state isolation: requested session %s prompt mismatched. Allocated fresh isolated session %s",
+                    session_id_str,
+                    active_session_id,
+                )
         except Exception as exc:
             logger.error("Failed to initialize session record in database: %s", exc)
             active_session_id = session_id_str or str(uuid.uuid4())
     else:
         active_session_id = session_id_str or str(uuid.uuid4())
 
+    # Only supply clarification answers if they belong to this active session continuation
+    effective_clarification_answers = payload.clarification_answers if not (session_id_str and is_new_session) else None
+
     # 2. Run AI enhancement pipeline (Call budgets strictly preserved, NO locks held during inference)
     try:
         result = await prompt_enhancer.enhance(
             user_prompt=payload.prompt,
-            clarification_answers=payload.clarification_answers,
+            clarification_answers=effective_clarification_answers,
             allow_reasonable_assumptions=payload.allow_reasonable_assumptions,
         )
     except OllamaConnectionError as exc:
@@ -186,41 +202,83 @@ async def enhance_prompt(
     repair_attempted = getattr(result, "repair_attempted", False)
     initial_prompt = getattr(result, "initial_enhanced_prompt", enhanced_text)
     initial_val = getattr(result, "initial_validation", validation)
+    stage_timings = getattr(result, "stage_timings", [])
 
-    # 3. Determine pipeline outcome status
+    # 3. Determine pipeline outcome status, processing mode, and diagnostic codes
+    stage_report = context_budget_manager.check_stage_budget("analyzer", "", payload.prompt)
+    is_long_mode = (
+        (hasattr(analysis, "grounding") and analysis.grounding and len(getattr(analysis.grounding, "source_units", [])) > 6 and len(payload.prompt) > 2000)
+        or stage_report.processing_mode == ProcessingMode.LONG_INPUT
+    )
+    active_mode = "long_input" if is_long_mode else "normal"
+    diagnostic_codes = [LONG_INPUT_MODE] if is_long_mode else [NORMAL_CONTEXT_MODE]
+
     outcome_status: str
     response_obj: EnhanceResponse
 
     if hasattr(analysis, "grounding") and analysis.grounding and not analysis.grounding.is_grounded:
         outcome_status = "analysis_failed"
+        reason_codes = ["ANALYSIS_UNGROUNDED"]
+        if getattr(analysis.grounding, "missing_source_units", None):
+            reason_codes.extend(["SOURCE_REQUIREMENT_DROPPED", "ANALYSIS_INCOMPLETE", "SOURCE_COVERAGE_FAILED"])
+        if session_id_str and is_new_session:
+            reason_codes.append("REQUEST_STATE_CONTAMINATION")
+        logger.warning("Pipeline outcome 'analysis_failed' with reason codes: %s", reason_codes)
         response_obj = AnalysisFailedResponse(
             status="analysis_failed",
             session_id=UUID(active_session_id),
             original_prompt=payload.prompt,
             analysis=analysis,
+            reason_codes=reason_codes,
+            processing_mode=active_mode,
+            diagnostic_codes=diagnostic_codes,
+            stage_timings=stage_timings,
             message="HumanIntent could not verify that the analysis was grounded in your request.",
             model=settings.ollama_model,
             history_saved=False,  # updated after commit
         )
     elif analysis.ambiguity.needs_clarification and not payload.allow_reasonable_assumptions:
         outcome_status = "needs_clarification"
+        reason_codes = ["CRITICAL_AMBIGUITY"]
+        if session_id_str and is_new_session:
+            reason_codes.append("REQUEST_STATE_CONTAMINATION")
+        logger.info("Pipeline outcome 'needs_clarification' with reason codes: %s", reason_codes)
         response_obj = ClarificationRequiredResponse(
             status="needs_clarification",
             session_id=UUID(active_session_id),
             original_prompt=payload.prompt,
             analysis=analysis,
             questions=analysis.ambiguity.questions,
+            reason_codes=reason_codes,
+            processing_mode=active_mode,
+            diagnostic_codes=diagnostic_codes,
+            stage_timings=stage_timings,
             model=settings.ollama_model,
             history_saved=False,
         )
     elif validation is not None and not validation.is_valid:
         outcome_status = "validation_failed"
+        reason_codes = []
+        if repair_attempted:
+            reason_codes.append("VALIDATION_REPAIR_FAILED")
+        if session_id_str and is_new_session:
+            reason_codes.append("REQUEST_STATE_CONTAMINATION")
+        for issue in validation.issues:
+            if issue.severity == ValidationSeverity.ERROR:
+                code_name = issue.type.value.upper()
+                if code_name not in reason_codes:
+                    reason_codes.append(code_name)
+        logger.warning("Pipeline outcome 'validation_failed' with reason codes: %s", reason_codes)
         response_obj = ValidationFailedResponse(
             status="validation_failed",
             session_id=UUID(active_session_id),
             original_prompt=payload.prompt,
             analysis=analysis,
             validation=validation,
+            reason_codes=reason_codes,
+            processing_mode=active_mode,
+            diagnostic_codes=diagnostic_codes,
+            stage_timings=stage_timings,
             message="HumanIntent could not produce a sufficiently faithful enhanced prompt after one repair attempt.",
             model=settings.ollama_model,
             history_saved=False,
@@ -237,6 +295,9 @@ async def enhance_prompt(
             template=template_name,
             validation=validation,
             quality=quality,
+            processing_mode=active_mode,
+            diagnostic_codes=diagnostic_codes,
+            stage_timings=stage_timings,
             history_saved=False,
         )
 

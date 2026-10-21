@@ -62,8 +62,11 @@ def extract_intent_anchor(
         corpus += " " + " ".join(ca.answer.lower() for ca in clarification_answers if ca.answer)
 
     # 1. IMAGE CREATION (High specificity: visual generation deliverable)
-    if re.search(r"\b(?:generate|create|draw|make|render)\s+(?:an?\s+)?(?:[a-z\-]+\s+){0,3}(?:image|illustration|picture|photo|graphic|portrait|artwork)\b", prompt_lower) or \
-       re.search(r"\b(?:midjourney|dall-e|stable\s+diffusion)\s+prompt\b", prompt_lower):
+    if (
+        re.search(r"\b(?:generate|create|draw|make|render)\s+(?:an?\s+)?(?:[a-z\-]+\s+){0,3}(?:image|illustration|picture|photo|graphic|portrait|artwork)\b", prompt_lower)
+        or re.search(r"\b(?:midjourney|dall-e|stable\s+diffusion)\s+prompt\b", prompt_lower)
+        or re.search(r"^(?:a\s+|an\s+)?(?:photorealistic|oil\s+on\s+canvas|vector\s+minimalist|hyperdetailed|watercolor|charcoal|pop\s+art|stained\s+glass|gouache|low\s+poly|macro\s+photo|isometric\s+3d|vintage\s+botanical|pencil\s+sketch|architectural\s+exterior|cinematic\s+wide|lush\s+oil|high-fashion|dark\s+fantasy|medieval\s+illuminated|abstract\s+acrylic|national\s+geographic|retro\s+1970s|black\s+and\s+white\s+street)\b", prompt_lower)
+    ):
         return IntentAnchor(
             action_family=ActionFamily.IMAGE_CREATION,
             primary_action="create image or image prompt",
@@ -72,7 +75,40 @@ def extract_intent_anchor(
             is_strong=True,
         )
 
-    # 2. SOFTWARE DEBUGGING (High specificity: fixing broken software/errors)
+    # 2. SUMMARIZATION (Explicit summarization or information extraction from provided material)
+    is_summarization_action = bool(
+        re.search(r"^(?:please\s+)?(?:summarize|condense|digest|synopsis|tldr|give\s+me\s+a\s+(?:brief\s+|short\s+|one-paragraph\s+|concise\s+)?summary|provide\s+(?:a\s+)?(?:[a-z0-9\-]+\s+){0,3}(?:tldr|summary|synopsis|recap))\b", prompt_lower)
+        or re.search(r"\b(?:extract\s+(?:all\s+|the\s+)?[a-z0-9_\-\s]+\s+from\s+(?:this|these|the)\s+)\b", prompt_lower)
+        or re.search(r"\b(?:extract\s+the\s+key\s+action\s+items|extract\s+decisions\s+made|tldr\s+this)\b", prompt_lower)
+        or (
+            re.search(r"\b(?:summarize|condense|digest|synopsis|tldr)\b", prompt_lower)
+            and not re.search(r"\bsummarize\s+(?:them|it|the\s+results|the\s+findings)?\s+in\s+a\s+table\b", prompt_lower)
+        )
+    )
+    if is_summarization_action:
+        return IntentAnchor(
+            action_family=ActionFamily.SUMMARIZATION,
+            primary_action="summarize or condense material",
+            target_or_deliverable="summary deliverable",
+            confidence=0.95,
+            is_strong=True,
+        )
+
+    # 3. WRITING (Composing communication or prose content: email, letter, message, memo, post, article)
+    is_text_writing = bool(
+        re.search(r"\b(?:draft|compose|write|rewrite)\s+(?:an?\s+|the\s+|\d+\s+)?(?:[a-z\-]+\s+){0,3}(?:email|letter|message|memo|note|announcement|newsletter|blog\s+post|post|article|essay|speech|press\s+release|cover\s+letter|copy|blurb|statement\s+of\s+work)\b", prompt_lower)
+        or re.search(r"\b(?:write|draft)\s+(?:a\s+)?(?:polite|formal|casual|friendly|professional)\s+(?:message|reply|response|note|email|letter)\b", prompt_lower)
+    )
+    if is_text_writing:
+        return IntentAnchor(
+            action_family=ActionFamily.WRITING,
+            primary_action="draft communication or content",
+            target_or_deliverable="written communication deliverable",
+            confidence=0.95,
+            is_strong=True,
+        )
+
+    # 4. SOFTWARE DEBUGGING (High specificity: fixing broken software/errors)
     if (
         re.search(r"\b(?:fix|debug|troubleshoot|diagnose|resolve)\s+(?:the\s+|this\s+|my\s+|an?\s+)?(?:bug|error|issue|crash|exception|deadlock|failing\s+test|problem\s+in\s+(?:the\s+)?code)\b", prompt_lower)
         or re.search(r"\bwhy\s+(?:is|does)\s+(?:this|my)\s+(?:[a-z\-]+\s+){0,3}(?:code|function|app|query|test|script|build|worker|process|job|pipeline)\s+(?:failing|crashing|broken|throwing|not\s+working|deadlock|deadlocking|timeout|freeze|freezes|hang|hangs)\b", prompt_lower)
@@ -87,8 +123,7 @@ def extract_intent_anchor(
             is_strong=True,
         )
 
-    # 3. RESEARCH (Investigation, literature survey, evidence synthesis, comparative approaches)
-    # Check RESEARCH before SUMMARIZATION so that formatting research in a table remains RESEARCH
+    # 5. RESEARCH (Investigation, literature survey, evidence synthesis, comparative approaches)
     is_research = bool(
         re.search(r"\b(?:research|investigate|literature\s+review|synthesize\s+(?:the\s+)?evidence|survey\s+of|find\s+studies\s+on)\b", prompt_lower)
         or re.search(r"\bcompare\s+(?:the\s+)?(?:main\s+)?(?:approaches|methods|techniques|options)\b", prompt_lower)
@@ -102,28 +137,20 @@ def extract_intent_anchor(
             is_strong=True,
         )
 
-    # 4. SUMMARIZATION (Condensing supplied or referenced text into a summary)
-    # Exclude formatting directives like "summarize in a table" for other tasks
-    if (
-        re.search(r"\b(?:summarize|condense|digest|synopsis|tldr|key\s+takeaways\s+from|give\s+me\s+a\s+summary\s+of)\b", prompt_lower)
-        and not re.search(r"\bsummarize\s+(?:them|it|the\s+results|the\s+findings)?\s+in\s+a\s+table\b", prompt_lower)
-    ):
-        return IntentAnchor(
-            action_family=ActionFamily.SUMMARIZATION,
-            primary_action="summarize or condense material",
-            target_or_deliverable="summary deliverable",
-            confidence=0.95,
-            is_strong=True,
-        )
-
-    # 5. SOFTWARE CREATION (Executable software, functions, scripts, web apps, endpoints, queries)
+    # 6. SOFTWARE CREATION (Executable software, functions, scripts, web apps, endpoints, queries)
     # Check verbs: create, build, implement, code, develop, write, make function/script/app/webpage
+    is_creative_script = bool(re.search(r"\b(?:scene\s+script|screenplay|movie\s+script|theatrical\s+script|dialogue\s+script)\b", prompt_lower))
     is_software_code = bool(
-        re.search(r"\b(?:create|build|implement|code|develop|write|generate|make)\s+(?:an?\s+|the\s+)?(?:[a-z\-]+\s+){0,5}(?:function|script|class|module|endpoint|api|algorithm|program|app|application|web\s+app|website|webpage|page|component|service|microservice|database\s+schema|sql\s+query|regex|parser|utility|cli\s+tool|tool|limiter|handler|middleware)\b", prompt_lower)
-        or re.search(r"\b(?:write|create|implement|make|build)\s+(?:a\s+|an\s+)?(?:go|python|javascript|typescript|rust|java|c\+\+|c#|ruby|sql|bash|html)\s+(?:function|script|program|code|routine|snippet|endpoint|microservice|utility|tool|app|limiter|handler)\b", prompt_lower)
-        or re.search(r"\b(?:implement|build|code)\s+.*?\bin\s+(?:python|javascript|typescript|go|rust|java|c\+\+|c#|ruby|sql|bash|html)\b", prompt_lower)
-        or re.search(r"\b(?:function|routine|script)\s+that\s+(?:takes|returns|calculates|handles|converts|processes|parses)\b", prompt_lower)
-        or re.search(r"\b(?:build|create|code|make)\s+(?:an?\s+)?(?:interactive\s+)?(?:calculator|dashboard|quiz|converter|tool|portal)\b", prompt_lower)
+        not is_creative_script
+        and (
+            re.search(r"\b(?:create|build|implement|code|develop|write|generate|make)\s+(?:an?\s+|the\s+)?(?:[a-z\-]+\s+){0,5}(?:function|script|class|module|endpoint|api|algorithm|program|app|application|web\s+app|website|webpage|page|component|service|microservice|server|database\s+schema|sql\s+query|regex|parser|utility|cli\s+tool|tool|limiter|handler|middleware)\b", prompt_lower)
+            or re.search(r"\b(?:write|create|implement|make|build)\s+(?:a\s+|an\s+)?(?:go|python|javascript|typescript|rust|java|c\+\+|c#|ruby|sql|bash|html)\s+(?:function|script|program|code|routine|snippet|endpoint|microservice|server|utility|tool|app|limiter|handler)\b", prompt_lower)
+            or re.search(r"\b(?:implement|build|code)\s+.*?\bin\s+(?:python|javascript|typescript|go|rust|java|c\+\+|c#|ruby|sql|bash|html)\b", prompt_lower)
+            or re.search(r"\b(?:function|routine|script)\s+that\s+(?:takes|returns|calculates|handles|converts|processes|parses)\b", prompt_lower)
+            or re.search(r"\b(?:build|create|code|make)\s+(?:an?\s+)?(?:interactive\s+)?(?:calculator|dashboard|quiz|converter|tool|portal)\b", prompt_lower)
+            or re.search(r"\b(?:quiz|calculator|tool|app)\s+(?:for|on)\s+(?:my\s+)?(?:website|site|page)\b", prompt_lower)
+            or re.search(r"\b(?:thing\s+for\s+my\s+website|page\s+on\s+my\s+website)\b", prompt_lower)
+        )
     )
     if is_software_code:
         return IntentAnchor(
@@ -133,9 +160,6 @@ def extract_intent_anchor(
             confidence=0.95,
             is_strong=True,
         )
-
-    # 6. WRITING (Composing communication or prose content: email, letter, message, memo, post, article)
-    # Crucially: "draft/compose/write" + text communication container, NOT code
     is_text_writing = bool(
         re.search(r"\b(?:draft|compose|write|rewrite)\s+(?:an?\s+|the\s+|\d+\s+)?(?:[a-z\-]+\s+){0,3}(?:email|letter|message|memo|note|announcement|newsletter|blog\s+post|post|article|essay|speech|press\s+release|cover\s+letter|copy|blurb)\b", prompt_lower)
         or re.search(r"\b(?:write|draft)\s+(?:a\s+)?(?:polite|formal|casual|friendly|professional)\s+(?:message|reply|response|note|email|letter)\b", prompt_lower)
@@ -154,11 +178,12 @@ def extract_intent_anchor(
         re.search(r"\b(?:explain|teach|help\s+me\s+understand|break\s+down)\s+(?:to\s+me\s+)?(?:the\s+concept\s+of\s+|how\s+|why\s+|what\s+)?", prompt_lower)
         and re.search(r"\b(?:explain|teach|difference\s+between|how\s+does|why\s+does|what\s+is\s+the\s+difference)\b", prompt_lower)
     ) or bool(
-        re.search(r"\bwhat\s+is\s+the\s+difference\s+between\b", prompt_lower)
+        re.search(r"\bwhat\s+(?:is\s+the\s+difference\s+between|makes\s+[a-zA-Z0-9_\-\s]+\s+different\s+from)\b", prompt_lower)
         or re.search(r"\bhow\s+does\s+[a-zA-Z0-9_\-\s]+\s+work\??", prompt_lower)
         or re.search(r"\bwhy\s+does\s+[a-zA-Z0-9_\-\s]+\s+(?:happen|occur|behave)\??", prompt_lower)
         or re.search(r"\bexplain\s+(?:how|why|what|the\s+difference|the\s+concept)\b", prompt_lower)
         or re.search(r"\bexplain\s+[a-zA-Z0-9_\-]+\s+simply\b", prompt_lower)
+        or re.search(r"\bhelp\s+me\s+understand\b", prompt_lower)
     )
     if is_education:
         return IntentAnchor(
@@ -201,9 +226,11 @@ def extract_intent_anchor(
             is_strong=True,
         )
 
-    # 10. CREATIVE IDEATION (Brainstorming concepts, names, suggestions)
+    # 10. CREATIVE IDEATION & FICTION (Brainstorming concepts, names, creative stories)
     is_brainstorm = bool(
-        re.search(r"\b(?:brainstorm|ideate|come\s+up\s+with\s+(?:\d+\s+)?ideas|generate\s+(?:\d+\s+)?(?:creative\s+)?ideas|creative\s+names|suggest\s+names)\b", prompt_lower)
+        re.search(r"\b(?:brainstorm|ideate|come\s+up\s+with\s+(?:\d+\s+)?ideas|generate\s+(?:\d+\s+)?(?:creative\s+)?ideas|creative\s+names|suggest\s+names|title\s+ideas|slogans?|taglines?|plot\s+twists?)\b", prompt_lower)
+        or re.search(r"\b(?:write|compose|create)\s+(?:an?\s+)?(?:short\s+|flash\s+)?(?:story|fiction|poem|poetry|song|screenplay|scene\s+script|dialogue|narrative|haiku|ballad|monologue|riddle)\b", prompt_lower)
+        or re.search(r"\b(?:scene\s+script|screenplay|flash\s+fiction)\b", prompt_lower)
     )
     if is_brainstorm:
         return IntentAnchor(

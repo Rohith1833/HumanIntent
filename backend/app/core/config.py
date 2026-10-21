@@ -14,6 +14,12 @@ class Settings(BaseSettings):
         description="Default local Ollama model",
     )
     ollama_timeout: float = 120.0
+    ollama_keep_alive: str = "15m"
+    context_window_size: int = Field(
+        default=8192,
+        validation_alias=AliasChoices("context_window_size", "CONTEXT_WINDOW_SIZE"),
+        description="Effective context window size of the LLM in tokens (e.g., 8192 for llama3)",
+    )
     backend_cors_origins: Union[List[str], str] = ["http://localhost:3000"]
 
     # Phase 8 Persistence settings

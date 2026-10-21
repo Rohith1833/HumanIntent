@@ -40,6 +40,7 @@ class CurationIssueType(str, Enum):
     SOURCE_MISSING = "SOURCE_MISSING"
     TASK_FAMILY_DRIFT = "TASK_FAMILY_DRIFT"
     UNSUPPORTED_REQUIREMENT = "UNSUPPORTED_REQUIREMENT"
+    NON_SUBSTANTIVE_REQUIREMENT = "NON_SUBSTANTIVE_REQUIREMENT"
     MALFORMED_TARGET = "MALFORMED_TARGET"
     PLACEHOLDER_CONTENT = "PLACEHOLDER_CONTENT"
     COMPOUND_TASK_LOSS = "COMPOUND_TASK_LOSS"
@@ -65,6 +66,7 @@ class RejectionReason(str, Enum):
     SOURCE_MISSING = "SOURCE_MISSING"
     TASK_FAMILY_DRIFT = "TASK_FAMILY_DRIFT"
     UNSUPPORTED_REQUIREMENT = "UNSUPPORTED_REQUIREMENT"
+    NON_SUBSTANTIVE_REQUIREMENT = "NON_SUBSTANTIVE_REQUIREMENT"
     MALFORMED_TARGET = "MALFORMED_TARGET"
     PLACEHOLDER_CONTENT = "PLACEHOLDER_CONTENT"
     COMPOUND_TASK_LOSS = "COMPOUND_TASK_LOSS"
@@ -91,6 +93,7 @@ class DatasetCurationReport(BaseModel):
     no_placeholder_content: bool = True
     no_internal_meta_content: bool = True
     no_unsupported_requirement: bool = True
+    no_non_substantive_requirement: bool = True
     issues: List[DatasetCurationIssue] = Field(default_factory=list)
 
 
@@ -249,3 +252,70 @@ class DatasetManifest(BaseModel):
     split_counts: Dict[str, int] = Field(default_factory=dict)
     generation_parameters: Dict[str, Any] = Field(default_factory=dict)
     filter_configuration: Dict[str, Any] = Field(default_factory=dict)
+
+
+# Human Review Schemas
+
+class HumanReviewDecision(str, Enum):
+    """Explicit human reviewer judgment."""
+    PENDING = "PENDING"
+    APPROVE = "APPROVE"
+    REVISE = "REVISE"
+    REJECT = "REJECT"
+
+
+class HumanReviewItem(BaseModel):
+    """Traceable human-review queue item preserving original, AI-proposed, and human-verified targets."""
+    review_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    record_id: str
+    dataset_version: str
+    category: str
+    seed_id: Optional[str] = None
+    original_prompt: str
+    teacher_target: Optional[str] = None
+
+    # Provisional AI-generated proposals
+    provisional_decision: Optional[HumanReviewDecision] = None
+    proposed_target: Optional[str] = None
+    proposal_reason: Optional[str] = None
+    proposal_source: Optional[str] = None  # e.g., "ai_provisional_reviewer"
+
+    # Human Review Verification (strictly PENDING until human auditor action)
+    decision: HumanReviewDecision = HumanReviewDecision.PENDING
+    revised_target: Optional[str] = None
+    reviewer: Optional[str] = None
+    reason: Optional[str] = None
+    reviewed_at: Optional[str] = None
+    verified_by_human: bool = False
+
+    clarification_required: bool = False
+    clarification_questions: List[str] = Field(default_factory=list)
+    quality_score: Optional[float] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def final_target(self) -> Optional[str]:
+        """Resolved training target based strictly on verified human review decision."""
+        if not self.verified_by_human or self.decision == HumanReviewDecision.PENDING:
+            return None
+        if self.decision == HumanReviewDecision.REVISE:
+            return self.revised_target
+        elif self.decision == HumanReviewDecision.APPROVE:
+            return self.teacher_target
+        return None
+
+
+class HumanReviewManifest(BaseModel):
+    """Manifest for a human-reviewed dataset export."""
+    dataset_version: str
+    reviewed_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    source_export_version: str
+    total_reviewed: int = 0
+    approved_count: int = 0
+    revised_count: int = 0
+    rejected_count: int = 0
+    pending_count: int = 0
+    category_counts: Dict[str, int] = Field(default_factory=dict)
+    rejection_reasons: Dict[str, int] = Field(default_factory=dict)
+    split_counts: Dict[str, int] = Field(default_factory=dict)
+    reviewers: List[str] = Field(default_factory=list)

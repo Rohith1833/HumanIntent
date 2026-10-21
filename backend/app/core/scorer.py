@@ -3,9 +3,11 @@
 import json
 import logging
 import re
-from typing import Any, Dict, Optional, Tuple
+import time
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from pydantic import ValidationError
 
+from app.core.source_coverage import extract_source_semantic_units, is_semantic_unit_covered
 from app.llm.ollama_client import OllamaResponseError, ollama_client
 from app.prompts.scorer import SCORER_SYSTEM_PROMPT, build_scorer_user_message
 from app.schemas.analysis import PromptAnalysis
@@ -14,6 +16,7 @@ from app.schemas.quality import (
     InflationRisk,
     PromptQualityReport,
     QualityDimension,
+    ScorerSubstageDiagnostic,
     SemanticDimensionsOutput,
     get_score_label,
 )
@@ -27,6 +30,28 @@ class PromptScorer:
 
     def __init__(self, client=None) -> None:
         self.client = client or ollama_client
+
+    async def _safe_chat(
+        self,
+        messages: List[Dict[str, str]],
+        format: Optional[Union[str, Dict[str, Any]]] = None,
+        num_predict: Optional[int] = None,
+    ) -> str:
+        """Call client chat safely supporting num_predict across real and mock clients."""
+        try:
+            if num_predict is not None:
+                if format is not None:
+                    return await self.client.chat(messages=messages, format=format, num_predict=num_predict)
+                return await self.client.chat(messages=messages, num_predict=num_predict)
+            if format is not None:
+                return await self.client.chat(messages=messages, format=format)
+            return await self.client.chat(messages=messages)
+        except TypeError as e:
+            if "unexpected keyword argument" in str(e) or "num_predict" in str(e):
+                if format is not None:
+                    return await self.client.chat(messages=messages, format=format)
+                return await self.client.chat(messages=messages)
+            raise
 
     def _build_schema_contract(self) -> Dict[str, Any]:
         """Generate JSON schema contract for SemanticDimensionsOutput."""
@@ -72,6 +97,8 @@ class PromptScorer:
         validation: Optional[PromptValidation],
         analysis: Optional[PromptAnalysis] = None,
         original_prompt: str = "",
+        enhanced_prompt: str = "",
+        precomputed_missing_source: Optional[List[str]] = None,
     ) -> QualityDimension:
         """Evaluate intent preservation score based on authoritative user request, grounded analysis, and validation evidence."""
         if analysis is not None and hasattr(analysis, "grounding") and analysis.grounding and not analysis.grounding.is_grounded:
@@ -80,6 +107,27 @@ class PromptScorer:
                 score=score,
                 label=get_score_label(score),
                 reason=f"Structured analysis failed source grounding: {', '.join(analysis.grounding.unsupported_items)}",
+            )
+
+        # Check direct source requirement loss
+        if precomputed_missing_source is not None:
+            missing_source = precomputed_missing_source
+        elif original_prompt and enhanced_prompt:
+            source_units = (
+                analysis.grounding.source_units
+                if (hasattr(analysis, "grounding") and analysis.grounding and analysis.grounding.source_units)
+                else extract_source_semantic_units(original_prompt)
+            )
+            missing_source = [u for u in source_units if not is_semantic_unit_covered(u, enhanced_prompt.lower())]
+        else:
+            missing_source = []
+
+        if missing_source:
+            score = 40
+            return QualityDimension(
+                score=score,
+                label=get_score_label(score),
+                reason=f"Authoritative source requirements were dropped: {', '.join(missing_source)}",
             )
 
         if validation is None:
@@ -101,11 +149,14 @@ class PromptScorer:
                     ValidationIssueType.ANALYSIS_OBJECTIVE_DRIFT,
                     ValidationIssueType.UNSUPPORTED_ANALYSIS_REQUIREMENT,
                     ValidationIssueType.ANALYSIS_GROUNDING_FAILURE,
+                    ValidationIssueType.SOURCE_REQUIREMENT_DROPPED,
+                    ValidationIssueType.ANALYSIS_INCOMPLETE,
+                    ValidationIssueType.SOURCE_COVERAGE_FAILED,
                 }
             ]
             if drift_errors:
                 score = 30
-                reason = f"Severe source grounding failure detected: {drift_errors[0].message}"
+                reason = f"Severe source grounding or coverage failure detected: {drift_errors[0].message}"
             else:
                 score = 40
                 reason = f"Intent preservation errors detected: {error_issues[0].message}"
@@ -130,8 +181,77 @@ class PromptScorer:
         analysis: PromptAnalysis,
         enhanced_prompt: str,
         validation: Optional[PromptValidation] = None,
+        original_prompt: str = "",
+        precomputed_source_units: Optional[List[str]] = None,
+        precomputed_missing_source: Optional[List[str]] = None,
     ) -> QualityDimension:
-        """Evaluate explicit requirements coverage using structured analysis and enhanced text."""
+        """Evaluate explicit requirements coverage using authoritative source and structured analysis."""
+        # 1. Check for missing requirement or source coverage errors in validator
+        has_missing_req_error = False
+        if validation:
+            has_missing_req_error = any(
+                i.type in {
+                    ValidationIssueType.MISSING_REQUIREMENT,
+                    ValidationIssueType.COMPOUND_TASK_LOSS,
+                    ValidationIssueType.SOURCE_REQUIREMENT_DROPPED,
+                    ValidationIssueType.ANALYSIS_INCOMPLETE,
+                    ValidationIssueType.SOURCE_COVERAGE_FAILED,
+                }
+                and i.severity == ValidationSeverity.ERROR
+                for i in validation.issues
+            )
+        enhanced_lower = enhanced_prompt.lower()
+        if precomputed_source_units is not None:
+            source_units = precomputed_source_units
+        else:
+            source_units = (
+                analysis.grounding.source_units
+                if (hasattr(analysis, "grounding") and analysis.grounding and analysis.grounding.source_units)
+                else (extract_source_semantic_units(original_prompt) if original_prompt else [])
+            )
+
+        if precomputed_missing_source is not None:
+            missing_source = precomputed_missing_source
+        else:
+            missing_source = [u for u in source_units if not is_semantic_unit_covered(u, enhanced_lower)]
+
+        if has_missing_req_error:
+            score = 60
+            reason = "One or more explicit deliverables, compound subtasks, or source requirements were omitted."
+            if missing_source:
+                reason += f" Dropped source requirements: {', '.join(missing_source)}."
+            return QualityDimension(
+                score=score,
+                label=get_score_label(score),
+                reason=reason,
+            )
+
+        # 2. Check direct authoritative source-level semantic units
+        if missing_source:
+            # Score 100 is strictly impossible if source requirements were dropped
+            source_ratio = (len(source_units) - len(missing_source)) / len(source_units)
+            if source_ratio >= 0.75:
+                score = 80
+            elif source_ratio >= 0.5:
+                score = 65
+            else:
+                score = 50
+            return QualityDimension(
+                score=score,
+                label=get_score_label(score),
+                reason=f"Authoritative source requirements omitted ({len(missing_source)} of {len(source_units)} dropped: {', '.join(missing_source)}).",
+            )
+
+        # 3. Check if analysis itself has dropped source items
+        if hasattr(analysis, "grounding") and analysis.grounding and not analysis.grounding.is_grounded:
+            if getattr(analysis.grounding, "missing_source_units", None):
+                score = 60
+                return QualityDimension(
+                    score=score,
+                    label=get_score_label(score),
+                    reason=f"Analysis omitted explicit source requirements: {', '.join(analysis.grounding.missing_source_units)}",
+                )
+
         reqs = analysis.explicit_requirements
         if not reqs:
             score = 100
@@ -141,23 +261,7 @@ class PromptScorer:
                 reason="All explicit requirements are covered (none were required by user).",
             )
 
-        # Check for missing requirement errors in validator
-        has_missing_req_error = False
-        if validation:
-            has_missing_req_error = any(
-                i.type in {ValidationIssueType.MISSING_REQUIREMENT, ValidationIssueType.COMPOUND_TASK_LOSS}
-                and i.severity == ValidationSeverity.ERROR
-                for i in validation.issues
-            )
-        if has_missing_req_error:
-            score = 60
-            return QualityDimension(
-                score=score,
-                label=get_score_label(score),
-                reason="One or more explicit deliverables or compound subtasks were omitted.",
-            )
-
-        # Deterministic coverage check: check token presence of each requirement with stemming
+        # Deterministic coverage check: check token presence of each requirement with set lookup & stemming
         SYNONYM_MAP = {
             "output": ["export", "display", "print", "produce", "generate"],
             "export": ["output", "save", "write", "dump"],
@@ -167,27 +271,29 @@ class PromptScorer:
             "tool": ["script", "utility", "program", "app", "application"],
         }
 
+        enhanced_words: Set[str] = set(re.findall(r"\b[a-zA-Z0-9_\+\.\-]{3,}\b", enhanced_lower))
+
         def token_matches(tok: str, text: str) -> bool:
-            if tok in text:
+            if tok in enhanced_words or tok in text:
                 return True
             # Handle y <-> ies (e.g. strategy <-> strategies)
             if tok.endswith("ies") and len(tok) > 4:
                 base = tok[:-3]
-                if base + "y" in text or base in text:
+                if base + "y" in enhanced_words or base in enhanced_words or (base + "y" in text or base in text):
                     return True
             if tok.endswith("y") and len(tok) > 3:
                 base = tok[:-1]
-                if base + "ies" in text or base in text:
+                if base + "ies" in enhanced_words or base in enhanced_words or (base + "ies" in text or base in text):
                     return True
             # Handle common verb/noun inflections (parser <-> parse, launch <-> launching)
             for suffix in ["ing", "tion", "ment", "ed", "er", "es", "s"]:
                 if tok.endswith(suffix) and len(tok) - len(suffix) >= 3:
                     base = tok[:-len(suffix)]
-                    if base in text:
+                    if base in enhanced_words or base in text:
                         return True
             # Handle synonyms
             for syn in SYNONYM_MAP.get(tok, []):
-                if syn in text:
+                if syn in enhanced_words or syn in text:
                     return True
             return False
 
@@ -300,15 +406,98 @@ class PromptScorer:
             logger.warning("Quality scoring blocked: structured analysis is ungrounded.")
             raise ValueError("Cannot calculate quality score for an ungrounded analysis.")
 
-        # Step 1: Compute deterministic dimensions
-        dim_intent = self.compute_intent_preservation(validation, analysis, original_prompt)
-        dim_reqs = self.compute_requirement_coverage(analysis, enhanced_prompt, validation)
+        substage_timings: List[ScorerSubstageDiagnostic] = []
+
+        # Sub-stage 1: Source unit reconciliation (request-scoped, non-duplicative)
+        t0 = time.perf_counter()
+        if hasattr(analysis, "grounding") and analysis.grounding and analysis.grounding.source_units:
+            source_units = analysis.grounding.source_units
+        elif original_prompt:
+            source_units = extract_source_semantic_units(original_prompt)
+        else:
+            source_units = []
+
+        enhanced_lower = enhanced_prompt.lower()
+        missing_source = [u for u in source_units if not is_semantic_unit_covered(u, enhanced_lower)]
+        substage_timings.append(
+            ScorerSubstageDiagnostic(
+                operation="source_unit_reconciliation",
+                elapsed_ms=round((time.perf_counter() - t0) * 1000.0, 3),
+                items_processed=len(source_units),
+                external_work=False,
+                details=f"{len(source_units)} units reconciled, {len(missing_source)} missing",
+            )
+        )
+
+        # Sub-stage 2: Intent preservation
+        t0 = time.perf_counter()
+        dim_intent = self.compute_intent_preservation(
+            validation=validation,
+            analysis=analysis,
+            original_prompt=original_prompt,
+            enhanced_prompt=enhanced_prompt,
+            precomputed_missing_source=missing_source,
+        )
+        substage_timings.append(
+            ScorerSubstageDiagnostic(
+                operation="intent_preservation",
+                elapsed_ms=round((time.perf_counter() - t0) * 1000.0, 3),
+                items_processed=len(validation.issues) if validation else 0,
+                external_work=False,
+                details=f"Score: {dim_intent.score}/100 ({dim_intent.label})",
+            )
+        )
+
+        # Sub-stage 3: Requirement coverage
+        t0 = time.perf_counter()
+        dim_reqs = self.compute_requirement_coverage(
+            analysis=analysis,
+            enhanced_prompt=enhanced_prompt,
+            validation=validation,
+            original_prompt=original_prompt,
+            precomputed_source_units=source_units,
+            precomputed_missing_source=missing_source,
+        )
+        substage_timings.append(
+            ScorerSubstageDiagnostic(
+                operation="requirement_coverage",
+                elapsed_ms=round((time.perf_counter() - t0) * 1000.0, 3),
+                items_processed=len(analysis.explicit_requirements),
+                external_work=False,
+                details=f"Score: {dim_reqs.score}/100 ({dim_reqs.label})",
+            )
+        )
+
+        # Sub-stage 4: Constraint preservation
+        t0 = time.perf_counter()
         dim_constraints = self.compute_constraint_preservation(analysis, enhanced_prompt, validation)
+        substage_timings.append(
+            ScorerSubstageDiagnostic(
+                operation="constraint_preservation",
+                elapsed_ms=round((time.perf_counter() - t0) * 1000.0, 3),
+                items_processed=len(analysis.constraints),
+                external_work=False,
+                details=f"Score: {dim_constraints.score}/100 ({dim_constraints.label})",
+            )
+        )
+
+        # Sub-stage 5: Inflation diagnostic
+        t0 = time.perf_counter()
         inflation_ratio, inflation_risk = self.compute_inflation_diagnostic(
             original_prompt, enhanced_prompt, validation
         )
+        substage_timings.append(
+            ScorerSubstageDiagnostic(
+                operation="inflation_diagnostic",
+                elapsed_ms=round((time.perf_counter() - t0) * 1000.0, 3),
+                items_processed=2,
+                external_work=False,
+                details=f"Ratio: {inflation_ratio}x, Risk: {inflation_risk.value}",
+            )
+        )
 
-        # Step 2: Semantic evaluation LLM call (ONE structured call)
+        # Sub-stage 6: Semantic rubrics LLM evaluation (ONE structured call)
+        t0 = time.perf_counter()
         user_msg = build_scorer_user_message(
             original_prompt=original_prompt,
             analysis=analysis,
@@ -323,7 +512,7 @@ class PromptScorer:
         # ATTEMPT 1: Primary semantic scoring call
         semantic_out: Optional[SemanticDimensionsOutput] = None
         try:
-            raw_output = await self.client.chat(messages=messages, format=schema)
+            raw_output = await self._safe_chat(messages=messages, format=schema, num_predict=350)
             semantic_out, issue, _ = self._parse_and_validate(raw_output)
             if semantic_out is None:
                 logger.warning("Scorer attempt 1 failed validation: %s. Initiating recovery attempt.", issue)
@@ -339,10 +528,20 @@ class PromptScorer:
                         ),
                     },
                 ]
-                raw_repair = await self.client.chat(messages=repair_messages, format=schema)
+                raw_repair = await self._safe_chat(messages=repair_messages, format=schema, num_predict=350)
                 semantic_out, repair_issue, _ = self._parse_and_validate(raw_repair)
         except (OllamaResponseError, Exception) as exc:
             logger.error("Scorer LLM call encountered error: %s. Using robust heuristic fallback.", exc)
+
+        substage_timings.append(
+            ScorerSubstageDiagnostic(
+                operation="semantic_rubrics_llm",
+                elapsed_ms=round((time.perf_counter() - t0) * 1000.0, 3),
+                items_processed=5,
+                external_work=True,
+                details="Ollama llama3 structured semantic dimensions inference",
+            )
+        )
 
         # Fallback values if LLM output fails
         if semantic_out is None:
@@ -378,7 +577,8 @@ class PromptScorer:
                 reason=semantic_out.concision.reason,
             )
 
-        # Step 3: Compute Overall Score deterministically via weighted aggregation
+        # Sub-stage 7: Weighted aggregation
+        t0 = time.perf_counter()
         raw_overall = (
             QUALITY_WEIGHTS["intent_preservation"] * dim_intent.score
             + QUALITY_WEIGHTS["requirement_coverage"] * dim_reqs.score
@@ -391,6 +591,15 @@ class PromptScorer:
         )
         overall_score = max(0, min(100, round(raw_overall)))
         overall_label = get_score_label(overall_score)
+        substage_timings.append(
+            ScorerSubstageDiagnostic(
+                operation="weighted_aggregation",
+                elapsed_ms=round((time.perf_counter() - t0) * 1000.0, 3),
+                items_processed=8,
+                external_work=False,
+                details=f"Final aggregate: {overall_score}/100 ({overall_label})",
+            )
+        )
 
         logger.info(
             "Quality scoring complete: overall %d/100 (%s) [inflation: %.1fx, risk: %s]",
@@ -413,6 +622,7 @@ class PromptScorer:
             concision=dim_concision,
             inflation_ratio=inflation_ratio,
             inflation_risk=inflation_risk,
+            substage_timings=substage_timings,
         )
 
 

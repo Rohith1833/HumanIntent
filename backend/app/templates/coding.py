@@ -49,6 +49,6 @@ class CodingTemplate(BaseTemplate):
             f"  * Never invent extra product features (no pricing, no unrequested product brands/sizes, no demographic questions, no user accounts/login).\n"
             f"  * Never automatically inject non-functional requirements like responsive design, mobile layout, security practices, or privacy policies unless explicitly requested.\n"
             f"  * Never assume or suggest candidate frameworks, databases, or UI paradigms that were not supplied.\n"
-            f"  * Do not invent user/domain personas (e.g. faculty, teachers, students, administrators).\n"
+            f"  * Do not invent user/domain personas (e.g. faculty, teachers, learners, administrators).\n"
             f"{length_guidance}"
         )

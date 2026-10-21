@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import random
+import re
 from typing import Any, Dict, List, Optional
 
 from dataset_factory.schemas import SeedIntent, SyntheticVariant, VariantType
@@ -10,9 +11,51 @@ from dataset_factory.schemas import SeedIntent, SyntheticVariant, VariantType
 logger = logging.getLogger("dataset_factory.synthetic_generator")
 
 
-def _cache_key(seed_id: str, variant_type: str, model: str, salt: str = "v1") -> str:
+def _cache_key(seed_id: str, variant_type: str, model: str, salt: str = "v2") -> str:
     content = f"{seed_id}:{variant_type}:{model}:{salt}"
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _canonicalize_generated_prompt(raw_text: str) -> str:
+    """Canonicalize synthetic generated prompt by removing generator narration wrappers and outer fences.
+
+    Removes factory-level narration (e.g. 'Here is the generated prompt:', 'Prompt:') and outer markdown
+    fences/quotes while preserving legitimate conversational language inside the prompt.
+    """
+    if not raw_text:
+        return ""
+    text = raw_text.strip()
+
+    fence_pattern = r"^```(?:[a-zA-Z0-9_\-]+)?\s*\n?(.*?)\n?```$"
+    narration_patterns = [
+        r"^here(?:'s|\s+is)\s+(?:a\s+realistic\s+|the\s+generated\s+|the\s+|a\s+)?user\s+prompt(?:\s+reflecting\s+the\s+requested\s+style)?\s*:?\s*",
+        r"^here(?:'s|\s+is)\s+(?:the\s+generated\s+prompt|the\s+prompt|a\s+prompt)\s*:?\s*",
+        r"^(?:generated\s+user\s+prompt|generated\s+prompt|user\s+prompt|prompt)\s*:\s*",
+    ]
+
+    for _ in range(3):
+        prev = text
+        # Strip outer markdown fences
+        m_fence = re.match(fence_pattern, text, flags=re.DOTALL)
+        if m_fence:
+            text = m_fence.group(1).strip()
+
+        # Strip leading factory narration wrappers
+        for pat in narration_patterns:
+            m = re.match(pat, text, flags=re.IGNORECASE)
+            if m:
+                text = text[m.end():].strip()
+                break
+
+        # Strip outer quotation marks if wrapped in quotes
+        if (text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'")):
+            if len(text) >= 2:
+                text = text[1:-1].strip()
+
+        if text == prev:
+            break
+
+    return text if text else raw_text.strip()
 
 
 class SyntheticGenerator:
@@ -95,17 +138,25 @@ class SyntheticGenerator:
             )
 
         elif variant_type == VariantType.SELF_CORRECTING:
+            # Domain-agnostic mid-sentence self-correction without hardcoded MySQL/SQLite or invented technologies
             prompt = (
-                f"I need to {intent_clean.lower()} using MySQL... wait actually scratch that, "
-                f"let's use SQLite instead. Make sure it satisfies {req_str}."
+                f"I need to {intent_clean.lower()}... wait, actually let me specify that more clearly: "
+                f"it should specifically satisfy {req_str}."
             )
+            if constraints_str:
+                prompt += f" Also make sure to {constraints_str}."
 
         elif variant_type == VariantType.CONSTRAINED:
-            neg_constraint = "avoid any heavy external dependencies or frameworks"
-            prompt = (
-                f"{intent_clean}. Explicit constraints: must include {req_str}. "
-                f"Do NOT use third-party runtime dependencies, {neg_constraint}."
-            )
+            # Express only authoritative constraints present on the seed; do not invent external-dependency restrictions
+            if seed.optional_constraints:
+                prompt = (
+                    f"{intent_clean}. Strict constraints: {constraints_str}. "
+                    f"Must strictly satisfy: {req_str}."
+                )
+            else:
+                prompt = (
+                    f"{intent_clean}. Strictly satisfy {req_str}, with no additional or unrequested scope."
+                )
 
         elif variant_type == VariantType.ALREADY_GOOD:
             if seed.already_good_reference:
@@ -147,12 +198,18 @@ class SyntheticGenerator:
         if cached:
             return cached
 
-        # Prepare generation prompt
+        # Prepare strengthened generation prompt
         system_instruction = (
             "You are a synthetic prompt generator creating realistic, human-authored prompts "
-            "for training an AI prompt optimization assistant.\n"
-            "Given a target seed intent, generate a SINGLE realistic user prompt reflecting the requested style.\n"
-            "Do NOT include conversational preamble. Return ONLY the prompt text."
+            "for training an AI prompt optimization assistant.\n\n"
+            "CRITICAL RULES:\n"
+            "1. Output exactly ONE raw human user prompt. Nothing else.\n"
+            "2. Do NOT include conversational preamble, introduction, or labels (e.g. no 'Here is the prompt:', no 'Prompt:').\n"
+            "3. Do NOT leak metadata or prompt headers (do NOT mention 'SEED INTENT', 'TARGET STYLE', or 'STYLE GUIDANCE').\n"
+            "4. Strictly preserve the seed intent and all core requirements from the user request.\n"
+            "5. Do NOT invent unrequested technologies, frameworks, metrics, methodologies, constraints, or deliverables.\n"
+            "6. Adapt the style and phrasing to match the target style while ensuring the underlying meaning and requirements do not drift.\n"
+            "7. Return ONLY the raw prompt text."
         )
 
         style_descriptions = {
@@ -189,13 +246,14 @@ class SyntheticGenerator:
                 messages=messages,
                 model_override=self.model,
             )
-            raw_text = response.strip().strip('"').strip("'")
-            if not raw_text:
-                raise ValueError("Empty response from Ollama")
+            raw_text = response.strip()
+            canonical_prompt = _canonicalize_generated_prompt(raw_text)
+            if not canonical_prompt:
+                raise ValueError("Empty response from Ollama after canonicalization")
 
             variant = SyntheticVariant(
                 seed_id=seed.seed_id,
-                prompt=raw_text,
+                prompt=canonical_prompt,
                 variant_type=variant_type,
                 intended_requirements=seed.core_requirements,
                 intent_preserved=True,
@@ -229,10 +287,12 @@ class SyntheticGenerator:
             VariantType.SHORT,
             VariantType.COMPOUND,
             VariantType.SELF_CORRECTING,
-            VariantType.CONSTRAINED,
             VariantType.ALREADY_GOOD,
             VariantType.AMBIGUOUS,
         ]
+        # Only select CONSTRAINED if the seed actually has optional constraints
+        if seed.optional_constraints:
+            all_styles.append(VariantType.CONSTRAINED)
 
         # Select target_count distinct styles
         k = min(target_count, len(all_styles))

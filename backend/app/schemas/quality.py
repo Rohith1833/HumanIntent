@@ -1,7 +1,7 @@
 """Phase 7 Prompt Quality Scoring Schemas."""
 
 from enum import Enum
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -68,6 +68,16 @@ class SemanticDimensionsOutput(BaseModel):
     concision: SemanticScoreItem
 
 
+class ScorerSubstageDiagnostic(BaseModel):
+    """Timing and metadata diagnostic for an internal scorer sub-operation."""
+
+    operation: str = Field(..., description="Name of sub-operation inside scorer.")
+    elapsed_ms: float = Field(..., description="Duration in milliseconds.")
+    items_processed: int = Field(default=0, description="Number of items or iterations processed.")
+    external_work: bool = Field(default=False, description="Whether LLM/external work occurred.")
+    details: Optional[str] = Field(default=None, description="Diagnostic notes or counts.")
+
+
 class PromptQualityReport(BaseModel):
     """Comprehensive explainable quality report for a validated prompt."""
 
@@ -96,6 +106,10 @@ class PromptQualityReport(BaseModel):
     inflation_risk: InflationRisk = Field(
         ...,
         description="Categorical risk of unnecessary prompt inflation (LOW, MEDIUM, HIGH).",
+    )
+    substage_timings: list[ScorerSubstageDiagnostic] = Field(
+        default_factory=list,
+        description="Per-sub-operation internal scorer timing diagnostics.",
     )
 
 
