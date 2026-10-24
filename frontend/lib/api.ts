@@ -162,6 +162,10 @@ export interface EnhancedResponse {
   template?: string;
   validation?: PromptValidation;
   quality?: PromptQualityReport;
+  mode?: string;
+  total_ms?: number;
+  inference_ms?: number;
+  stage_timings?: Array<{ stage: string; elapsed_ms: number; llm_called: boolean }>;
   history_saved?: boolean;
 }
 
@@ -172,6 +176,8 @@ export interface ClarificationRequiredResponse {
   analysis: PromptAnalysis;
   questions: ClarificationQuestion[];
   model: string;
+  mode?: string;
+  total_ms?: number;
   history_saved?: boolean;
 }
 
@@ -183,6 +189,8 @@ export interface ValidationFailedResponse {
   validation: PromptValidation;
   message: string;
   model: string;
+  mode?: string;
+  total_ms?: number;
   history_saved?: boolean;
 }
 
@@ -193,6 +201,8 @@ export interface AnalysisFailedResponse {
   analysis: PromptAnalysis;
   message: string;
   model: string;
+  mode?: string;
+  total_ms?: number;
   history_saved?: boolean;
 }
 
@@ -206,6 +216,7 @@ export interface EnhanceOptions {
   session_id?: string;
   clarification_answers?: ClarificationAnswer[];
   allow_reasonable_assumptions?: boolean;
+  mode?: "quick" | "professional" | "deep";
 }
 
 export interface HistorySummaryItem {
@@ -407,6 +418,7 @@ export async function enhancePrompt(
         session_id: options?.session_id,
         clarification_answers: options?.clarification_answers,
         allow_reasonable_assumptions: options?.allow_reasonable_assumptions ?? false,
+        mode: options?.mode ?? "professional",
       }),
     });
   } catch {

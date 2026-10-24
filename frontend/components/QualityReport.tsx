@@ -18,16 +18,16 @@ export const QualityReport: React.FC<QualityReportProps> = ({ report }) => {
   ];
 
   const getBadgeColor = (score: number) => {
-    if (score >= 90) return "#10b981"; // green
-    if (score >= 80) return "#3b82f6"; // blue
-    if (score >= 70) return "#f59e0b"; // amber
-    return "#ef4444"; // red
+    if (score >= 90) return "var(--status-green)";
+    if (score >= 80) return "var(--accent-pine)";
+    if (score >= 70) return "var(--status-amber)";
+    return "var(--status-red)";
   };
 
   const getRiskColor = (risk: string) => {
-    if (risk === "LOW") return "#10b981";
-    if (risk === "MEDIUM") return "#f59e0b";
-    return "#ef4444";
+    if (risk === "LOW") return "var(--status-green)";
+    if (risk === "MEDIUM") return "var(--status-amber)";
+    return "var(--status-red)";
   };
 
   return (
@@ -35,7 +35,7 @@ export const QualityReport: React.FC<QualityReportProps> = ({ report }) => {
       style={{
         marginTop: "1.25rem",
         paddingTop: "1rem",
-        borderTop: "1px solid var(--border, rgba(255, 255, 255, 0.1))",
+        borderTop: "1px solid var(--border-hairline)",
       }}
       aria-label="Prompt Quality Estimate"
     >
@@ -51,19 +51,20 @@ export const QualityReport: React.FC<QualityReportProps> = ({ report }) => {
         }}
       >
         <div style={{ display: "flex", alignItems: "baseline", gap: "0.6rem" }}>
-          <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--foreground, #ededed)" }}>
+          <span style={{ fontSize: "0.92rem", fontWeight: 600, color: "var(--text-primary)" }}>
             Prompt Quality Estimate
           </span>
           <span
             style={{
               fontSize: "0.85rem",
               fontWeight: 700,
+              fontFamily: "var(--font-mono)",
               color: getBadgeColor(report.overall_score),
             }}
           >
             {report.overall_score} / 100
           </span>
-          <span style={{ fontSize: "0.75rem", color: "#a1a1aa" }}>
+          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
             ({report.overall_label})
           </span>
         </div>
@@ -71,18 +72,18 @@ export const QualityReport: React.FC<QualityReportProps> = ({ report }) => {
         {/* Inflation Diagnostic */}
         <div
           style={{
-            fontSize: "0.75rem",
-            color: "#a1a1aa",
+            fontSize: "0.76rem",
+            color: "var(--text-muted)",
             display: "flex",
             alignItems: "center",
             gap: "0.5rem",
           }}
         >
           <span>Prompt expansion: {report.inflation_ratio}×</span>
-          <span>•</span>
+          <span>&bull;</span>
           <span>
             Inflation risk:{" "}
-            <span style={{ color: getRiskColor(report.inflation_risk), fontWeight: 500 }}>
+            <span style={{ color: getRiskColor(report.inflation_risk), fontWeight: 600 }}>
               {report.inflation_risk.charAt(0) + report.inflation_risk.slice(1).toLowerCase()}
             </span>
           </span>
@@ -94,7 +95,7 @@ export const QualityReport: React.FC<QualityReportProps> = ({ report }) => {
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: "0.5rem 1rem",
+          gap: "0.45rem 0.85rem",
         }}
       >
         {dimensions.map(({ name, dim }) => (
@@ -106,14 +107,15 @@ export const QualityReport: React.FC<QualityReportProps> = ({ report }) => {
               justifyContent: "space-between",
               alignItems: "center",
               fontSize: "0.8rem",
-              padding: "0.25rem 0.4rem",
-              borderRadius: "4px",
-              background: "rgba(255, 255, 255, 0.02)",
+              padding: "0.3rem 0.6rem",
+              borderRadius: "var(--radius-xs)",
+              background: "var(--bg-canvas)",
+              border: "1px solid var(--border-subtle)",
             }}
           >
-            <span style={{ color: "#a1a1aa" }}>{name}</span>
+            <span style={{ color: "var(--text-secondary)" }}>{name}</span>
             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-              <span style={{ fontWeight: 600, color: getBadgeColor(dim.score) }}>
+              <span style={{ fontWeight: 600, fontFamily: "var(--font-mono)", color: getBadgeColor(dim.score) }}>
                 {dim.score}
               </span>
             </div>

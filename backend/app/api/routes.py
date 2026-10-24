@@ -1,4 +1,5 @@
 import logging
+import time
 import uuid
 from typing import Optional
 from uuid import UUID
@@ -13,6 +14,7 @@ from app.core.context_budget import (
     context_budget_manager,
 )
 from app.core.enhancer import prompt_enhancer
+from app.core.fast_path import fast_path_pipeline
 from app.db.repositories.feedback import FeedbackRepository
 from app.db.repositories.sessions import EnhancementSessionRepository
 from app.db.session import get_db
@@ -167,12 +169,21 @@ async def enhance_prompt(
     effective_clarification_answers = payload.clarification_answers if not (session_id_str and is_new_session) else None
 
     # 2. Run AI enhancement pipeline (Call budgets strictly preserved, NO locks held during inference)
+    t_start = time.perf_counter()
     try:
-        result = await prompt_enhancer.enhance(
-            user_prompt=payload.prompt,
-            clarification_answers=effective_clarification_answers,
-            allow_reasonable_assumptions=payload.allow_reasonable_assumptions,
-        )
+        if payload.mode is not None:
+            result = await fast_path_pipeline.enhance_fast_path(
+                user_prompt=payload.prompt,
+                clarification_answers=effective_clarification_answers,
+                allow_reasonable_assumptions=payload.allow_reasonable_assumptions,
+                mode=payload.mode,
+            )
+        else:
+            result = await prompt_enhancer.enhance(
+                user_prompt=payload.prompt,
+                clarification_answers=effective_clarification_answers,
+                allow_reasonable_assumptions=payload.allow_reasonable_assumptions,
+            )
     except OllamaConnectionError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -194,6 +205,10 @@ async def enhance_prompt(
             detail=_clean_ollama_error_detail(exc),
         ) from exc
 
+    elapsed_ms = (time.perf_counter() - t_start) * 1000.0
+    measured_total_ms = getattr(result, "total_ms", None) or elapsed_ms
+    measured_inference_ms = getattr(result, "inference_ms", None)
+
     analysis, enhanced_text = result[0], result[1]
     template_obj = get_template(analysis.classification.category) if analysis.classification else None
     template_name = template_obj.name if template_obj else None
@@ -212,6 +227,7 @@ async def enhance_prompt(
     )
     active_mode = "long_input" if is_long_mode else "normal"
     diagnostic_codes = [LONG_INPUT_MODE] if is_long_mode else [NORMAL_CONTEXT_MODE]
+    response_mode = getattr(result, "mode", None) or payload.mode or "professional"
 
     outcome_status: str
     response_obj: EnhanceResponse
@@ -231,8 +247,10 @@ async def enhance_prompt(
             analysis=analysis,
             reason_codes=reason_codes,
             processing_mode=active_mode,
+            mode=response_mode,
             diagnostic_codes=diagnostic_codes,
             stage_timings=stage_timings,
+            total_ms=measured_total_ms,
             message="HumanIntent could not verify that the analysis was grounded in your request.",
             model=settings.ollama_model,
             history_saved=False,  # updated after commit
@@ -251,8 +269,10 @@ async def enhance_prompt(
             questions=analysis.ambiguity.questions,
             reason_codes=reason_codes,
             processing_mode=active_mode,
+            mode=response_mode,
             diagnostic_codes=diagnostic_codes,
             stage_timings=stage_timings,
+            total_ms=measured_total_ms,
             model=settings.ollama_model,
             history_saved=False,
         )
@@ -277,8 +297,10 @@ async def enhance_prompt(
             validation=validation,
             reason_codes=reason_codes,
             processing_mode=active_mode,
+            mode=response_mode,
             diagnostic_codes=diagnostic_codes,
             stage_timings=stage_timings,
+            total_ms=measured_total_ms,
             message="HumanIntent could not produce a sufficiently faithful enhanced prompt after one repair attempt.",
             model=settings.ollama_model,
             history_saved=False,
@@ -296,8 +318,11 @@ async def enhance_prompt(
             validation=validation,
             quality=quality,
             processing_mode=active_mode,
+            mode=response_mode,
             diagnostic_codes=diagnostic_codes,
             stage_timings=stage_timings,
+            total_ms=measured_total_ms,
+            inference_ms=measured_inference_ms,
             history_saved=False,
         )
 

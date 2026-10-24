@@ -26,6 +26,10 @@ class EnhanceRequest(BaseModel):
         default=False,
         description="If True, bypasses clarification and instructs the enhancer to proceed with safe, minimal assumptions.",
     )
+    mode: Optional[Literal["quick", "professional", "deep"]] = Field(
+        default=None,
+        description="Enhancement mode: 'quick' (fastest single-call), 'professional' (balanced production fast path), 'deep' (comprehensive multi-aspect)",
+    )
 
     @field_validator("prompt")
     @classmethod
@@ -47,8 +51,11 @@ class EnhancedResponse(BaseModel):
     validation: Optional[PromptValidation] = None
     quality: Optional[PromptQualityReport] = None
     processing_mode: str = Field(default="normal", description="Execution mode: 'normal' or 'long_input'.")
+    mode: str = Field(default="professional", description="Enhancement mode requested: 'quick', 'professional', or 'deep'.")
     diagnostic_codes: list[str] = Field(default_factory=list, description="Diagnostic observation codes.")
     stage_timings: list[StageTimingDiagnostic] = Field(default_factory=list, description="Per-stage latency and token telemetry.")
+    total_ms: Optional[float] = Field(default=None, description="Total measured end-to-end latency in milliseconds.")
+    inference_ms: Optional[float] = Field(default=None, description="Measured model inference latency in milliseconds.")
     history_saved: bool = True
 
 
@@ -60,8 +67,10 @@ class ClarificationRequiredResponse(BaseModel):
     questions: list[ClarificationQuestion]
     reason_codes: list[str] = Field(default_factory=list, description="Structured machine-readable reason codes.")
     processing_mode: str = Field(default="normal", description="Execution mode: 'normal' or 'long_input'.")
+    mode: str = Field(default="professional", description="Enhancement mode requested: 'quick', 'professional', or 'deep'.")
     diagnostic_codes: list[str] = Field(default_factory=list, description="Diagnostic observation codes.")
     stage_timings: list[StageTimingDiagnostic] = Field(default_factory=list, description="Per-stage latency and token telemetry.")
+    total_ms: Optional[float] = Field(default=None, description="Total measured end-to-end latency in milliseconds.")
     model: str
     history_saved: bool = True
 
@@ -74,8 +83,10 @@ class ValidationFailedResponse(BaseModel):
     validation: PromptValidation
     reason_codes: list[str] = Field(default_factory=list, description="Structured machine-readable reason codes.")
     processing_mode: str = Field(default="normal", description="Execution mode: 'normal' or 'long_input'.")
+    mode: str = Field(default="professional", description="Enhancement mode requested: 'quick', 'professional', or 'deep'.")
     diagnostic_codes: list[str] = Field(default_factory=list, description="Diagnostic observation codes.")
     stage_timings: list[StageTimingDiagnostic] = Field(default_factory=list, description="Per-stage latency and token telemetry.")
+    total_ms: Optional[float] = Field(default=None, description="Total measured end-to-end latency in milliseconds.")
     message: str = "HumanIntent could not produce a sufficiently faithful enhanced prompt after one repair attempt."
     model: str
     history_saved: bool = True
@@ -88,8 +99,10 @@ class AnalysisFailedResponse(BaseModel):
     analysis: PromptAnalysis
     reason_codes: list[str] = Field(default_factory=list, description="Structured machine-readable reason codes.")
     processing_mode: str = Field(default="normal", description="Execution mode: 'normal' or 'long_input'.")
+    mode: str = Field(default="professional", description="Enhancement mode requested: 'quick', 'professional', or 'deep'.")
     diagnostic_codes: list[str] = Field(default_factory=list, description="Diagnostic observation codes.")
     stage_timings: list[StageTimingDiagnostic] = Field(default_factory=list, description="Per-stage latency and token telemetry.")
+    total_ms: Optional[float] = Field(default=None, description="Total measured end-to-end latency in milliseconds.")
     message: str = "HumanIntent could not verify that the analysis was grounded in your request."
     model: str
     history_saved: bool = True
